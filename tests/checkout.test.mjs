@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp, DEFAULT_STRIPE_PRICE_ID } from '../server.mjs';
+import { createApp, DEFAULT_STRIPE_PRICE_ID, DEFAULT_DOMAIN } from '../server.mjs';
 
 test('checkout: configuração, parâmetros, erros e proteção de arquivos', async () => {
   process.env.DOMAIN = 'https://omnipdv.example';
@@ -37,8 +37,18 @@ test('checkout: configuração, parâmetros, erros e proteção de arquivos', as
     assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 200);
     assert.equal(params.line_items[0].price, DEFAULT_STRIPE_PRICE_ID);
     delete process.env.DOMAIN;
-    assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 503);
+    assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 200);
+    assert.equal(params.cancel_url, `${DEFAULT_DOMAIN}/?checkout=cancelled#assinatura`);
     for (const file of ['/.env', '/server.mjs', '/package-lock.json', '/.git/config']) assert.equal((await fetch(base+file)).status,404);
     assert.equal((await fetch(base+'/')).status,200);
+  } finally { await new Promise(resolve=>server.close(resolve)); }
+});
+
+test('checkout sem chave retorna indisponibilidade', async () => {
+  const server = createApp(null);
+  await new Promise(resolve=>server.listen(0, '127.0.0.1', resolve));
+  try {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/create-checkout-session`, {method:'POST'});
+    assert.equal(response.status, 503);
   } finally { await new Promise(resolve=>server.close(resolve)); }
 });

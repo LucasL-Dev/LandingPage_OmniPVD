@@ -11,9 +11,9 @@ Fonte única dos passos restantes. Cenário B: não existia criação de Checkou
 | `STRIPE_SECRET_KEY` | `sk_test_...` no exemplo; ausente no ambiente | Chave secreta de teste nas variáveis do servidor. Nunca no frontend, Git ou chat. |
 | `line_items[].price` / `STRIPE_PRICE_ID` | `price_1UVCotRyOKs2Cpl0wvQXsmAi` (configurado como padrão) | ID informado já configurado. Verificar na Stripe se é recorrente, em BRL, R$ 79,90, e do mesmo modo da chave. `STRIPE_PRICE_ID` permite substituir o padrão. |
 | `mode` | `subscription` | Mantido para assinatura recorrente. Confirmar a periodicidade comercial no Price; ela ainda não foi informada. |
-| `success_url` | `${DOMAIN}/?checkout=success&session_id={CHECKOUT_SESSION_ID}` | Definir `DOMAIN` com a origem pública HTTPS real. Manter o template `{CHECKOUT_SESSION_ID}`. A página de retorno não confirma pagamento. |
-| `cancel_url` | `${DOMAIN}/?checkout=cancelled#assinatura` | Definir `DOMAIN` com a origem real da landing page. |
-| `DOMAIN` | `http://localhost:3000` no exemplo; ausente no ambiente | Origem pública HTTPS de produção; HTTP local apenas no desenvolvimento. |
+| `success_url` | `${DOMAIN}/?checkout=success&session_id={CHECKOUT_SESSION_ID}` | Hostinger já configurada como padrão; `DOMAIN` permite substituir a origem. Manter o template `{CHECKOUT_SESSION_ID}`. A página de retorno não confirma pagamento. |
+| `cancel_url` | `${DOMAIN}/?checkout=cancelled#assinatura` | Hostinger já configurada como padrão; `DOMAIN` permite substituir a origem. |
+| `DOMAIN` | `https://mediumslateblue-falcon-614408.hostingersite.com` (padrão configurado) | Origem pública HTTPS de produção; HTTP local apenas no desenvolvimento. |
 
 ## Parâmetros configurados
 
@@ -67,3 +67,13 @@ Antes de vender, implementar fulfillment no backend ou serviço de entrega conec
 Novos arquivos: `.env.example`, `package-lock.json`, `tests/checkout.test.mjs` e este documento. Nenhum webhook incompleto foi adicionado. O plugin Stripe não estava disponível nas ferramentas desta sessão; a integração usa o SDK oficial.
 
 Recursos: https://support.stripe.com · https://docs.stripe.com/mcp · https://docs.stripe.com/testing · https://docs.stripe.com/webhooks
+
+## Hospedagem Hostinger
+
+Origem configurada: `https://mediumslateblue-falcon-614408.hostingersite.com`.
+
+- Em uma aplicação **Node.js** no hPanel, conecte o repositório, use instalação `npm ci`, início `npm start` e Node.js 24. Cadastre `STRIPE_SECRET_KEY` no painel seguro da aplicação e reinicie/republique. O código já contém o Price ID e a origem informados; variáveis `STRIPE_PRICE_ID` e `DOMAIN` permitem substituí-los.
+- Se o plano/site estiver servindo somente arquivos estáticos, subir os arquivos não executará `server.mjs`. Será necessário usar hospedagem Node.js compatível ou hospedar a API separadamente; não colocar a chave em `app.js`.
+- Para teste local, use `DOMAIN=http://localhost:3000` no `.env` ignorado pelo Git.
+- A chave compartilhada no chat é de teste. Substitua-a no Dashboard e cadastre a nova no painel seguro. Não a envie por chat ou Git.
+- A verificação externa da hospedagem foi bloqueada pelo proxy desta sessão (HTTP 403 no túnel); ainda não foi confirmado que a Hostinger esteja executando a rota Node.js.

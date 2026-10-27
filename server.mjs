@@ -5,6 +5,7 @@ import path from 'node:path';
 import Stripe from 'stripe';
 import { loadEnvFile } from 'node:process';
 
+export const DEFAULT_DOMAIN = 'https://mediumslateblue-falcon-614408.hostingersite.com';
 export const DEFAULT_STRIPE_PRICE_ID = 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 
 const root = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
@@ -17,11 +18,11 @@ return http.createServer(async (req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
-      if (!stripe || !process.env.DOMAIN) {
+      if (!stripe) {
         res.writeHead(503).end(JSON.stringify({ error: 'A assinatura está sendo configurada. Tente novamente em breve.' })); return;
       }
       try {
-        const domain = new URL(process.env.DOMAIN).origin;
+        const domain = new URL(process.env.DOMAIN || DEFAULT_DOMAIN).origin;
         if (req.headers.origin && req.headers.origin !== domain) {
           res.writeHead(403).end(JSON.stringify({ error: 'Origem não permitida.' })); return;
         }
