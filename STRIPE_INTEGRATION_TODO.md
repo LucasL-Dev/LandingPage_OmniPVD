@@ -40,7 +40,7 @@ SDK instalado: `stripe@23.0.1`, compatível com `hosted_page` (SDKs anteriores a
 3. Execute `npm run check` e `npm test`.
 4. Use uma hospedagem que execute Node.js. Hospedagem apenas estática, como GitHub Pages, não executa a rota de checkout. O servidor permite somente arquivos públicos e não serve `.env`, Git ou código de backend.
 
-Não é necessária chave publicável para este fluxo hospedado. Não há armazenamento de clientes/assinaturas porque o projeto não possui banco ou modelos de usuário.
+Não é necessária chave publicável para este fluxo hospedado. O Checkout não cria contas de usuário. Quando configurado, o módulo de billing persiste IDs, autorização e fila em SQLite privado; veja billing/README.md.
 
 ## Fluxo e validação
 
@@ -54,19 +54,11 @@ Os testes automatizados usam um cliente Stripe simulado: verificam parâmetros, 
 - Testar cancelamento, retorno, erro de rede e confirmação no Dashboard.
 - Nunca usar cartões reais no modo teste. Ao ativar produção, trocar chave e Price para os recursos live correspondentes.
 
-## Entrega por e-mail e controle da assinatura — ainda não implementados
+## Entrega por e-mail e download privado
 
-Antes de vender, implementar fulfillment no backend ou serviço de entrega conectado à Stripe:
+O webhook Stripe com validação do corpo original, a persistência SQLite, a fila idempotente Resend e o serviço de download privado agora estão implementados. **O envio automático continua desativado por padrão.**
 
-1. Webhook com validação obrigatória de assinatura sobre o corpo original, usando um `STRIPE_WEBHOOK_SECRET` seguro.
-2. Confirmar estado de pagamento no servidor (`invoice.paid` e eventos pertinentes ao ciclo de assinatura), associar pedido/assinatura ao cliente e persistir o processamento com idempotência.
-3. Enviar acesso protegido ao instalador por provedor de e-mail; não publicar instalador pago nos assets e não liberar por parâmetros de retorno da URL.
-4. Tratar renovação, falha de pagamento, cancelamento e reenvio seguro de acesso. Validar a entrega em modo teste.
-5. Confirmar periodicidade, condições comerciais e política de cancelamento antes de abrir vendas.
-
-Novos arquivos: `.env.example`, `package-lock.json`, `tests/checkout.test.mjs` e este documento. Nenhum webhook incompleto foi adicionado. O plugin Stripe não estava disponível nas ferramentas desta sessão; a integração usa o SDK oficial.
-
-Recursos: https://support.stripe.com · https://docs.stripe.com/mcp · https://docs.stripe.com/testing · https://docs.stripe.com/webhooks
+As pendências de infraestrutura, variáveis, operação e testes estão em [billing/README.md](billing/README.md), com decisões prévias em [billing/DECISIONS.md](billing/DECISIONS.md). Antes de ativar: provisionar disco persistente e instalador privado real, configurar origem HTTPS, Resend e webhook de teste, validar end-to-end. O backend desta etapa rejeita eventos live; não habilita cobranças reais. Confirmar periodicidade e condições comerciais antes de qualquer migração live.
 
 ## Hospedagem Hostinger
 

@@ -6,10 +6,12 @@
   "scripts": {
     "dev": "node server.mjs",
     "start": "node server.mjs",
-    "check": "node --check app.js && node --check server.mjs",
-    "test": "node --test tests/*.test.mjs"
+    "check": "node --check app.js && node --check server.mjs && node --check billing/service.mjs && node --check billing/runtime.mjs && node --check billing/status.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "billing:status": "node billing/status.mjs"
   },
   "dependencies": {
+    "resend": "6.35.0",
     "stripe": "23.0.1"
   }
 }

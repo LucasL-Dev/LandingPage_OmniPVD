@@ -19,7 +19,7 @@ Não existe link de download padrão. O HTML contém `{{downloadUrl}}` no botão
 
 A logo oficial é carregada de `assets/omnipdv.png` e incorporada por CID (`omnipvd-logo`), sem dependência de hospedagem externa. Não remova `attachments` ao passar o payload ao Resend. Clientes que bloqueiam imagens continuam exibindo o nome da marca em texto.
 
-## Integração futura com Resend
+## Integração com Resend
 
 Depois de validar o pagamento no backend e gerar o acesso seguro:
 
@@ -36,7 +36,7 @@ const email = await buildWelcomeEmail({
   supportEmail: process.env.SUPPORT_EMAIL,
 });
 
-// Na integração futura: passar o payload ao cliente Resend configurado no servidor.
+// Referência: o worker em billing/service.mjs já realiza essa integração quando habilitado.
 // const result = await resend.emails.send({
 //   from: process.env.RESEND_FROM, // Remetente de domínio verificado no Resend.
 //   to: customer.email,
@@ -46,7 +46,7 @@ const email = await buildWelcomeEmail({
 // Verificar result.error e persistir o envio para evitar duplicações.
 ```
 
-`RESEND_API_KEY` deve ficar exclusivamente nas variáveis seguras do servidor. Não há SDK Resend instalado nem envio habilitado nesta etapa. O backend futuro deve validar a assinatura dos webhooks Stripe, verificar o pagamento, autorizar o cliente e emitir links com validade e controle de acesso. Validar HTTPS no renderer não verifica assinatura, autorização ou expiração: essas garantias pertencem ao serviço de download.
+`RESEND_API_KEY` deve ficar exclusivamente nas variáveis seguras do servidor. O SDK Resend está instalado. O módulo [billing](../billing/README.md) valida webhooks Stripe, verifica o pagamento, persiste a fila e gera links temporários autorizados. O envio permanece desabilitado por padrão até configurar a infraestrutura privada e as flags. Validar HTTPS no renderer não verifica assinatura, autorização ou expiração: essas garantias pertencem ao serviço de download.
 
 Não grave URLs assinadas em logs públicos. Configure a política de rastreamento de links do provedor de acordo com os requisitos do serviço de download. Envie somente após confirmação efetiva do pagamento, com idempotência por pedido/evento; não use o retorno do navegador como prova de compra.
 

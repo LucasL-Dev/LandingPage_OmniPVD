@@ -8,7 +8,7 @@ Com Node.js 24, execute `npm ci` e `npm start`. A porta padrão é 3000 (`PORT` 
 
 Consulte [STRIPE_INTEGRATION_TODO.md](STRIPE_INTEGRATION_TODO.md) para todas as configurações, pendências, testes e instruções de pagamento e entrega por e-mail.
 
-Todos os CTAs de download levam à assinatura de R$ 79,90. O CTA de assinatura usa Stripe Checkout. A criação de sessão está implementada; confirmação de pagamento e envio de acesso por e-mail ainda precisam de integração.
+Todos os CTAs de download levam à assinatura de R$ 79,90. O CTA de assinatura usa Stripe Checkout. O webhook de teste, a fila SQLite, o envio via Resend e o serviço de download privado estão implementados. O envio automático fica desligado até configurar infraestrutura e flags; consulte [billing/README.md](billing/README.md).
 
 ## Marca e captura
 
@@ -18,4 +18,8 @@ O tema segue a preferência do sistema no primeiro acesso, permite alternância 
 
 ## E-mail de boas-vindas
 
-O template responsivo e o renderer para preparar o payload do Resend estão em [emails/README.md](emails/README.md). Incluem logo inline, dados dinâmicos, versão texto e URL de download fornecida pelo backend. Nenhum envio foi habilitado.
+O template responsivo e o renderer para preparar o payload do Resend estão em [emails/README.md](emails/README.md). Incluem logo inline, dados dinâmicos, versão texto e URL de download fornecida pelo backend. Nenhum envio foi habilitado por padrão.
+
+## Webhook, persistência e download privado
+
+Antes de ativar qualquer envio, leia [as decisões de infraestrutura](billing/DECISIONS.md) e o [guia de configuração, operação e testes com Stripe CLI/Resend](billing/README.md). Requer Node.js 24, volume persistente privado e uma única instância. O instalador não está no repositório.
