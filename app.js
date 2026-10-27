@@ -1,6 +1,5 @@
 // Configure somente URLs oficiais HTTPS. Não coloque segredos neste arquivo público.
 const config = {
-  subscriptionUrl: '',
   priceLabel: 'R$ 79,90',
   priceDescription: 'Assinatura OmniPDV',
 };
@@ -24,28 +23,36 @@ document.addEventListener('click', event => {
 });
 
 const dialog = document.querySelector('#action-dialog');
-const messages = {
-  subscribe: ['Sua próxima fase começa aqui.', 'A contratação ainda não está disponível. Em breve, você poderá consultar valores, recursos incluídos e condições da assinatura do OmniPDV por aqui.'],
-};
-document.querySelectorAll('[data-action]').forEach(button => {
-  button.addEventListener('click', () => {
-    const action = button.dataset.action;
-    const destination = config.subscriptionUrl;
-    if (destination) {
-      try {
-        const url = new URL(destination);
-        if (url.protocol === 'https:') {
-          window.location.assign(url.href);
-          return;
-        }
-      } catch { /* Uma configuração incompleta mantém o aviso acessível. */ }
+function showCheckoutMessage(title, description) {
+  document.querySelector('#dialog-title').textContent = title;
+  document.querySelector('#dialog-description').textContent = description;
+  dialog.showModal();
+}
+document.querySelectorAll('[data-action="subscribe"]').forEach(button => {
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch('/api/create-checkout-session', { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Não foi possível abrir o pagamento.');
+      const url = new URL(result.url);
+      if (url.protocol !== 'https:' || url.hostname !== 'checkout.stripe.com') throw new Error('Endereço de pagamento inválido.');
+      window.location.assign(url.href);
+    } catch (error) {
+      showCheckoutMessage('Não foi possível abrir a assinatura', error instanceof TypeError || error instanceof SyntaxError ? 'Verifique sua conexão e tente novamente. O pagamento pode estar temporariamente indisponível.' : error.message);
+    } finally {
+      button.disabled = false;
+      button.removeAttribute('aria-busy');
     }
-    const [title, description] = messages[action];
-    document.querySelector('#dialog-title').textContent = title;
-    document.querySelector('#dialog-description').textContent = description;
-    dialog.showModal();
   });
 });
+const checkoutResult = new URLSearchParams(window.location.search).get('checkout');
+if (checkoutResult === 'success') {
+  showCheckoutMessage('Você retornou do pagamento', 'A confirmação depende do processamento pela Stripe. O acesso por e-mail será liberado após a confirmação; este retorno não confirma a compra.');
+} else if (checkoutResult === 'cancelled') {
+  showCheckoutMessage('Você pode tentar novamente', 'O checkout foi fechado. Quando quiser, volte à assinatura para continuar.');
+}
 document.querySelectorAll('.dialog-close, .dialog-dismiss').forEach(button => button.addEventListener('click', () => dialog.close()));
 dialog.addEventListener('click', event => {
   const rect = dialog.getBoundingClientRect();
@@ -58,7 +65,7 @@ if (config.priceLabel) {
   description.textContent = config.priceDescription;
   price.append(description);
 }
-if (config.subscriptionUrl) document.querySelector('#subscription-status').textContent = 'Consulte as condições de contratação no canal oficial.';
+
 document.querySelector('#year').textContent = String(new Date().getFullYear());
 
 const themeButton = document.querySelector('.theme-toggle');

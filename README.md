@@ -2,17 +2,13 @@
 
 Página estática responsiva em português, com a identidade verde `#285d53` do [aplicativo oficial](https://github.com/LucasL-Dev/PDV_Sistem), temas claro/escuro, preço de R$ 79,90 e apresentação dos recursos reais.
 
-## Executar
+## Executar e configurar pagamentos
 
-Com Node.js 24, execute `npm start` nesta pasta. Porta padrão: 3000 (configurável com `PORT`). Não há dependências de produção ou build. Verificação: `npm run check`. Os arquivos HTML, CSS, JS e `assets/` também podem ser hospedados como site estático.
+Com Node.js 24, execute `npm ci` e `npm start`. A porta padrão é 3000 (`PORT` permite alterar). O checkout requer o servidor Node; hospedagem somente estática não executa a API.
 
-## Assinatura e entrega
+Consulte [STRIPE_INTEGRATION_TODO.md](STRIPE_INTEGRATION_TODO.md) para todas as configurações, pendências, testes e instruções de pagamento e entrega por e-mail.
 
-Todos os CTAs de download levam à seção de assinatura. O fluxo comercial previsto é: assinatura → confirmação do pagamento → acesso ao instalador por e-mail.
-
-Em `app.js`, preencha `config.subscriptionUrl` com a URL HTTPS do checkout oficial. Configure a entrega protegida do instalador na plataforma de pagamento, ou em um backend que valide webhooks de pagamento e envie e-mail. Essa integração ainda não existe neste repositório; a página estática não processa pagamentos nem envia e-mails. Não exponha um instalador pago em assets públicos e não coloque segredos no JavaScript.
-
-O valor é R$ 79,90. A periodicidade não foi informada e não foi presumida; configure-a junto às condições comerciais antes de abrir a contratação. Enquanto o checkout não estiver configurado, o CTA explica que a assinatura está indisponível.
+Todos os CTAs de download levam à assinatura de R$ 79,90. O CTA de assinatura usa Stripe Checkout. A criação de sessão está implementada; confirmação de pagamento e envio de acesso por e-mail ainda precisam de integração.
 
 ## Marca e captura
 
