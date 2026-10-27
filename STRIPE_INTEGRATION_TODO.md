@@ -9,7 +9,7 @@ Fonte única dos passos restantes. Cenário B: não existia criação de Checkou
 | Campo | Valor atual | O que definir |
 | --- | --- | --- |
 | `STRIPE_SECRET_KEY` | `sk_test_...` no exemplo; ausente no ambiente | Chave secreta de teste nas variáveis do servidor. Nunca no frontend, Git ou chat. |
-| `line_items[].price` / `STRIPE_PRICE_ID` | `price_...` no exemplo; ausente no ambiente | Price ID recorrente real, em BRL, de R$ 79,90, da mesma conta e modo da chave. |
+| `line_items[].price` / `STRIPE_PRICE_ID` | `price_1UVCotRyOKs2Cpl0wvQXsmAi` (configurado como padrão) | ID informado já configurado. Verificar na Stripe se é recorrente, em BRL, R$ 79,90, e do mesmo modo da chave. `STRIPE_PRICE_ID` permite substituir o padrão. |
 | `mode` | `subscription` | Mantido para assinatura recorrente. Confirmar a periodicidade comercial no Price; ela ainda não foi informada. |
 | `success_url` | `${DOMAIN}/?checkout=success&session_id={CHECKOUT_SESSION_ID}` | Definir `DOMAIN` com a origem pública HTTPS real. Manter o template `{CHECKOUT_SESSION_ID}`. A página de retorno não confirma pagamento. |
 | `cancel_url` | `${DOMAIN}/?checkout=cancelled#assinatura` | Definir `DOMAIN` com a origem real da landing page. |
@@ -36,7 +36,7 @@ SDK instalado: `stripe@23.0.1`, compatível com `hosted_page` (SDKs anteriores a
 ## Instalação e execução
 
 1. Node.js 24: execute `npm ci`.
-2. Configure as variáveis do servidor no provedor de hospedagem. Para desenvolvimento, copie `.env.example` para `.env`, substitua os valores e execute `node --env-file=.env server.mjs`. `npm start` usa variáveis já exportadas pelo ambiente e não carrega `.env` automaticamente.
+2. Configure as variáveis do servidor no provedor de hospedagem. Para desenvolvimento, copie `.env.example` para `.env`, substitua os valores e execute `npm start`. O servidor carrega `.env` automaticamente se existir; variáveis já exportadas têm precedência.
 3. Execute `npm run check` e `npm test`.
 4. Use uma hospedagem que execute Node.js. Hospedagem apenas estática, como GitHub Pages, não executa a rota de checkout. O servidor permite somente arquivos públicos e não serve `.env`, Git ou código de backend.
 
@@ -46,7 +46,7 @@ Não é necessária chave publicável para este fluxo hospedado. Não há armaze
 
 O CTA chama o endpoint → servidor cria Checkout Session com o Price definido no servidor → navegador abre `checkout.stripe.com` → Stripe devolve à landing page. Falhas de configuração e de rede são mostradas ao usuário, sem expor detalhes privados da Stripe.
 
-Os testes automatizados usam um cliente Stripe simulado: verificam parâmetros, resposta, erros, origem e proteção de arquivos. **Nenhuma sessão real ou cobrança foi criada**, pois faltam credenciais e Price ID. Validar no modo teste da Stripe antes de produção:
+Os testes automatizados usam um cliente Stripe simulado: verificam parâmetros, resposta, erros, origem e proteção de arquivos. **Nenhuma sessão real ou cobrança foi criada**, pois a chave ainda precisa ser cadastrada nas variáveis seguras do servidor. O Price ID informado foi configurado. Validar no modo teste da Stripe antes de produção:
 
 - Cartão aprovado: `4242 4242 4242 4242`, validade futura e CVC de teste.
 - Autenticação: `4000 0025 0000 3155`.

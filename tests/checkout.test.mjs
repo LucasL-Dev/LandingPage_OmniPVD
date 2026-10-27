@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createApp } from '../server.mjs';
+import { createApp, DEFAULT_STRIPE_PRICE_ID } from '../server.mjs';
 
 test('checkout: configuração, parâmetros, erros e proteção de arquivos', async () => {
   process.env.DOMAIN = 'https://omnipdv.example';
@@ -33,6 +33,10 @@ test('checkout: configuração, parâmetros, erros e proteção de arquivos', as
     assert.equal(error.status, 502);
     assert.ok(!(await error.text()).includes('private Stripe details'));
     delete process.env.STRIPE_PRICE_ID;
+    fail = false;
+    assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 200);
+    assert.equal(params.line_items[0].price, DEFAULT_STRIPE_PRICE_ID);
+    delete process.env.DOMAIN;
     assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 503);
     for (const file of ['/.env', '/server.mjs', '/package-lock.json', '/.git/config']) assert.equal((await fetch(base+file)).status,404);
     assert.equal((await fetch(base+'/')).status,200);

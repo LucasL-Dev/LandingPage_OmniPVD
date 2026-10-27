@@ -3,6 +3,9 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import Stripe from 'stripe';
+import { loadEnvFile } from 'node:process';
+
+export const DEFAULT_STRIPE_PRICE_ID = 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 
 const root = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
@@ -14,7 +17,7 @@ return http.createServer(async (req, res) => {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
-      if (!stripe || !process.env.DOMAIN || !process.env.STRIPE_PRICE_ID) {
+      if (!stripe || !process.env.DOMAIN) {
         res.writeHead(503).end(JSON.stringify({ error: 'A assinatura está sendo configurada. Tente novamente em breve.' })); return;
       }
       try {
@@ -35,7 +38,7 @@ return http.createServer(async (req, res) => {
           origin_context: 'web',
           success_url: `${domain}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${domain}/?checkout=cancelled#assinatura`,
-          line_items: [{ price: process.env.STRIPE_PRICE_ID, quantity: 1 }],
+          line_items: [{ price: process.env.STRIPE_PRICE_ID || DEFAULT_STRIPE_PRICE_ID, quantity: 1 }],
         });
         res.writeHead(200).end(JSON.stringify({ url: session.url }));
       } catch {
@@ -55,6 +58,7 @@ return http.createServer(async (req, res) => {
 });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  try { loadEnvFile(path.join(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
   createApp(stripe).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log(`OmniPDV iniciado na porta ${process.env.PORT || 3000}`));
 }
