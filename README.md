@@ -15,3 +15,7 @@ Todos os CTAs de download levam à assinatura de R$ 79,90. O CTA de assinatura u
 O símbolo `assets/omnipdv.png` vem do repositório oficial. `assets/omnipdv-app.png` é uma captura real do Electron executando o código do aplicativo em modo escuro, obtida pelo smoke test oficial em ambiente isolado, com dados de demonstração. Não é uma imagem gerada ou uma recriação da interface. O teste usa dados fictícios, sem informações de clientes reais.
 
 O tema segue a preferência do sistema no primeiro acesso, permite alternância no cabeçalho e salva a escolha no navegador. Cores e escala estão em `styles.css`.
+
+## E-mail de boas-vindas
+
+O template responsivo e o renderer para preparar o payload do Resend estão em [emails/README.md](emails/README.md). Incluem logo inline, dados dinâmicos, versão texto e URL de download fornecida pelo backend. Nenhum envio foi habilitado.
