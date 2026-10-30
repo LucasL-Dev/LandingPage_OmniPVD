@@ -10,7 +10,9 @@
     "test": "node --test tests/*.test.mjs",
     "billing:status": "node billing/status.mjs",
     "auth:admin": "node auth/admin.mjs",
-    "license:keygen": "node licensing/keygen.mjs"
+    "license:keygen": "node licensing/keygen.mjs",
+    "backup": "node scripts/backup.mjs",
+    "license:public": "node scripts/license-public.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",
@@ -18,5 +20,8 @@
     "jose": "6.2.14",
     "resend": "6.35.0",
     "stripe": "23.0.1"
+  },
+  "engines": {
+    "node": ">=24 <25"
   }
 }

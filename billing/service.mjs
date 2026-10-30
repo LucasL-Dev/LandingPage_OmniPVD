@@ -20,7 +20,7 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
   if (dbDirectory === projectRoot || dbDirectory.startsWith(projectRoot + path.sep)) throw new Error('Banco deve estar fora do checkout.');
   const db = new DatabaseSync(config.dbPath);
   chmodSync(config.dbPath, 0o600);
-  db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
+  db.exec(`PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS events(id TEXT PRIMARY KEY, type TEXT NOT NULL, processed_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS subscriptions(id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, status TEXT NOT NULL, paid_until INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS deliveries(subscription_id TEXT PRIMARY KEY, customer_id TEXT NOT NULL, invoice_id TEXT NOT NULL,
@@ -69,7 +69,8 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     const filename = await realpath(config.installerPath);
     const root = await realpath(config.projectRoot);
     if (filename === root || filename.startsWith(root + path.sep) || !filename.toLowerCase().endsWith('.exe')) throw new Error('Instalador deve estar fora do checkout.');
-    if (!(await stat(filename)).isFile()) throw new Error('Instalador indisponível.');
+    const info = await stat(filename);
+    if (!info.isFile() || info.size > (config.maxInstallerBytes || 2147483648)) throw new Error('Instalador indisponível.');
     const origin = new URL(config.downloadOrigin);
     if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('DOWNLOAD_ORIGIN deve ser uma origem HTTPS.');
     return filename;
@@ -104,14 +105,15 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     return payload;
   }
-  let busy = false;
+  let busy = false, stopping = false;
   async function runQueue() {
-    if (busy || !config.emailEnabled || !resend || !config.from || !config.supportEmail) return;
+    if (stopping || busy || !config.emailEnabled || !resend || !config.from || !config.supportEmail) return;
     busy = true;
     try {
       await installerPath(); // Nunca criar payload ou enviar com instalador indisponível.
       const jobs = db.prepare("SELECT * FROM deliveries WHERE status IN ('pending','retry','sending') AND next_at<=? AND lease_until<=? LIMIT 20").all(now(), now());
       for (const job of jobs) {
+        if (stopping) break;
         if ((job.first_at && now() - job.first_at >= 23 * 60 * 60 * 1000) || job.attempts >= 8) {
           db.prepare("UPDATE deliveries SET status='manual_review',last_error='retry_window_exhausted' WHERE subscription_id=?").run(job.subscription_id); continue;
         }
@@ -126,18 +128,25 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
           const payload = job.payload ? JSON.parse(job.payload) : await preparePayload(job, state);
           db.prepare('UPDATE deliveries SET attempts=attempts+1,first_at=COALESCE(first_at,?) WHERE subscription_id=?').run(now(), job.subscription_id);
           const result = await resend.emails.send(payload, { idempotencyKey: `omnipvd-welcome-${job.subscription_id}`, signal: AbortSignal.timeout(30_000) });
-          if (result.error || !result.data?.id) throw new Error('Resend não confirmou envio.');
+          if (result.error || !result.data?.id) {
+            const failure=new Error('Envio não confirmado.');
+            failure.deliveryCode=result.error?.name==='rate_limit_exceeded'?'provider_rate_limited':'provider_not_confirmed';throw failure;
+          }
           db.prepare("UPDATE deliveries SET status='sent',resend_id=?,lease_until=0,last_error=NULL WHERE subscription_id=?").run(result.data.id, job.subscription_id);
-        } catch {
-          db.prepare("UPDATE deliveries SET status='retry',next_at=?,lease_until=0,last_error='delivery_failed' WHERE subscription_id=?").run(now() + Math.min(3600, 30 * 2 ** job.attempts) * 1000, job.subscription_id);
+        } catch (error) {
+          const code=['provider_rate_limited','provider_not_confirmed'].includes(error.deliveryCode)?error.deliveryCode:'delivery_failed';
+          db.prepare("UPDATE deliveries SET status='retry',next_at=?,lease_until=0,last_error=? WHERE subscription_id=?").run(now() + Math.min(3600, 30 * 2 ** job.attempts) * 1000, code, job.subscription_id);
         }
       }
     } finally { busy = false; }
   }
+  let activeDownloads=0;
   async function download(req, res) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
     if (req.method !== 'GET') { res.writeHead(405, { Allow: 'GET' }).end(); return; }
+    if(activeDownloads >= (config.maxDownloads || 4)){res.writeHead(503,{'Retry-After':'30'}).end('Tente novamente.');return;}
+    activeDownloads++;let released=false;const release=()=>{if(!released){released=true;activeDownloads--;}};res.once('close',release);res.once('finish',release);
     try {
       const token = new URL(req.url, 'https://local.invalid').searchParams.get('token');
       const grant = token && token.length <= 100 && db.prepare('SELECT * FROM downloads WHERE token_hash=?').get(hash(token));
@@ -147,6 +156,7 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
       if (!allowed(state.record) || state.record.customer_id !== grant.customer_id) { res.writeHead(403).end('Assinatura não autorizada.'); return; }
       const filename = await installerPath();
       const info = await stat(filename);
+      if(res.destroyed)return;
       res.writeHead(200, { 'Content-Type': 'application/octet-stream', 'Content-Disposition': 'attachment; filename="OmniPVD-Setup.exe"', 'Content-Length': info.size, 'X-Content-Type-Options': 'nosniff' });
       const stream = createReadStream(filename);
       stream.on('error', () => res.destroy());
@@ -154,5 +164,5 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
       stream.pipe(res);
     } catch { if (!res.headersSent) res.writeHead(503).end('Download temporariamente indisponível.'); else res.destroy(); }
   }
-  return { receive, runQueue, download, close: () => db.close(), db };
+  return { receive, runQueue, stopQueue:()=>{stopping=true;}, download, close: () => db.close(), db };
 }

@@ -22,12 +22,19 @@ export async function authRuntime({stripe,billing,projectRoot,priceId}) {
   const filename=await realpath(process.env.LICENSE_PRIVATE_KEY_PATH);
   const root=await realpath(projectRoot);
   if(filename===root||filename.startsWith(root+path.sep))throw new Error('Chave privada deve estar fora do checkout.');
+  let previousPublicKeys=[];
+  if(process.env.LICENSE_PREVIOUS_PUBLIC_KEYS_PATH){
+    const publicFile=await realpath(process.env.LICENSE_PREVIOUS_PUBLIC_KEYS_PATH);
+    if(publicFile===root||publicFile.startsWith(root+path.sep))throw new Error('Use arquivo público de rotação fora do checkout.');
+    previousPublicKeys=JSON.parse(await readFile(publicFile,'utf8')).keys;
+    if(!Array.isArray(previousPublicKeys))throw new Error('JWKS anterior inválido.');
+  }
   const config={origin:originUrl.origin,rpId,secureCookies:!local,
     browserTtlMs:seconds('AUTH_BROWSER_TTL_SECONDS',43_200,300,86_400)*1000,
     sessionTtlMs:seconds('AUTH_SESSION_TTL_SECONDS',2_592_000,3600,2_592_000)*1000,
     accessTtlMs:seconds('AUTH_ACCESS_TTL_SECONDS',600,60,900)*1000};
   const auth=createAuth({db:billing.db,config});
   const licensing=await createLicensing({db:billing.db,stripe,privateKeyPem:await readFile(filename,'utf8'),
-    config:{priceId,keyId,issuer:originUrl.origin,audience:'omnipvd-desktop',offlineTtlSeconds:seconds('LICENSE_OFFLINE_TTL_SECONDS',14_400,60,14_400),recheckSeconds:seconds('LICENSE_RECHECK_SECONDS',900,30,3600)}});
+    config:{priceId,keyId,previousPublicKeys,issuer:originUrl.origin,audience:'omnipvd-desktop',offlineTtlSeconds:seconds('LICENSE_OFFLINE_TTL_SECONDS',14_400,60,14_400),recheckSeconds:seconds('LICENSE_RECHECK_SECONDS',900,30,3600)}});
   return {auth,licensing,handle:createAuthHandler({auth,licensing,db:billing.db,config})};
 }

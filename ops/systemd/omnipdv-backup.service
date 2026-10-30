@@ -1,0 +1,17 @@
+[Unit]
+Description=Consistent private SQLite backup for OmniPDV
+
+[Service]
+Type=oneshot
+User=omnipdv
+Group=omnipdv
+WorkingDirectory=/opt/omnipdv/current
+EnvironmentFile=/etc/omnipdv/backend.env
+Environment=BACKUP_DIR=/var/lib/omnipdv/backups
+UMask=0077
+ExecStart=/usr/bin/node scripts/backup.mjs
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/omnipdv

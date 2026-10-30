@@ -12,6 +12,13 @@ export async function createLicensing({ db, stripe, config, privateKeyPem, now =
   check(signingKey.asymmetricKeyType === 'ed25519',500,'invalid_signing_key');
   const publicKey = createPublicKey(signingKey);
   const jwk = { ...await exportJWK(publicKey),kid:config.keyId,alg:'EdDSA',use:'sig' };
+  const previous=config.previousPublicKeys || [];
+  if(!Array.isArray(previous)||previous.length>10 || previous.some(k=>!k || k.kty!=='OKP'||k.crv!=='Ed25519'||k.alg!=='EdDSA'||k.use!=='sig'||Object.keys(k).some(field=>!['kty','crv','x','kid','alg','use'].includes(field))||k.d||!k.x||!k.kid||k.kid===config.keyId) || new Set(previous.map(k=>k.kid)).size!==previous.length)
+    throw new Error('Conjunto de chaves públicas anteriores inválido.');
+  for(const key of previous) {
+    const publicOnly=createPublicKey({key,format:'jwk'});
+    if(publicOnly.asymmetricKeyType!=='ed25519')throw new Error('Chave pública inválida.');
+  }
   async function invoiceLines(invoice) {
     if (!invoice.lines?.has_more) return invoice.lines?.data || [];
     const result=[];
@@ -95,7 +102,7 @@ export async function createLicensing({ db, stripe, config, privateKeyPem, now =
     const next=Math.min(now()+config.recheckSeconds*1000,expiry ? expiry*1000 : Infinity);
     return {authorized:!!chosen?.authorized,subscription_status:chosen?.status || 'no_subscription',authorization_expires_at:expiry ? new Date(expiry*1000).toISOString() : null,next_check_at:new Date(next).toISOString(),offline_authorization:offline};
   }
-  return {status,jwks:{keys:[jwk]}};
+  return {status,jwks:{keys:[jwk,...previous]}};
 }
 
 // Reference verifier for the desktop protocol. Only a pinned/trusted public key is accepted.

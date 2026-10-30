@@ -1,0 +1,32 @@
+name: Backend Ubuntu readiness
+on:
+  pull_request:
+  push:
+    branches: [feat/ubuntu-vps-deployment]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - name: Validate systemd unit syntax without starting services
+        run: |
+          NODE_EXEC=$(command -v node)
+          mkdir -p /tmp/omni-systemd
+          sed "s|/usr/bin/node|$NODE_EXEC|g; s|User=omnipdv|User=root|; s|Group=omnipdv|Group=root|" ops/systemd/omnipdv.service > /tmp/omni-systemd/omnipdv.service
+          sed "s|/usr/bin/node|$NODE_EXEC|g; s|User=omnipdv|User=root|; s|Group=omnipdv|Group=root|" ops/systemd/omnipdv-backup.service > /tmp/omni-systemd/omnipdv-backup.service
+          cp ops/systemd/omnipdv-backup.timer /tmp/omni-systemd/
+          systemd-analyze verify /tmp/omni-systemd/omnipdv.service /tmp/omni-systemd/omnipdv-backup.service /tmp/omni-systemd/omnipdv-backup.timer
+      - name: Validate Caddy parser without running a server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y caddy
+          OMNIPDV_DOMAIN=pdv.example.com caddy adapt --config ops/Caddyfile --adapter caddyfile > /tmp/omnipdv-caddy.json

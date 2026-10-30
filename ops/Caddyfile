@@ -1,0 +1,31 @@
+{
+    # Proxy errors can include full request URLs; exclude these namespaces too.
+    log default {
+        exclude http.log.access http.log.error
+    }
+}
+
+# Set OMNIPDV_DOMAIN in the caddy service environment (hostname only).
+{$OMNIPDV_DOMAIN} {
+    encode zstd gzip
+    request_body {
+        max_size 1MB
+    }
+    header {
+        Strict-Transport-Security "max-age=31536000"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "no-referrer"
+        X-Frame-Options "DENY"
+        -Server
+    }
+    # No file_server/root directive: even public assets come through the backend
+    # allowlist. Do not enable access logging: URL queries contain bearer codes.
+    reverse_proxy 127.0.0.1:3000 {
+        header_up -X-Forwarded-For
+        header_up -X-Real-IP
+        transport http {
+            dial_timeout 5s
+            response_header_timeout 35s
+        }
+    }
+}

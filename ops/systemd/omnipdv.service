@@ -1,0 +1,46 @@
+[Unit]
+Description=OmniPDV backend (single instance)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=omnipdv
+Group=omnipdv
+WorkingDirectory=/opt/omnipdv/current
+EnvironmentFile=/etc/omnipdv/backend.env
+Environment=NODE_ENV=production
+Environment=DEPLOY_ENV=production
+Environment=HOST=127.0.0.1
+UMask=0077
+RuntimeDirectory=omnipdv
+RuntimeDirectoryMode=0700
+StateDirectory=omnipdv
+StateDirectoryMode=0700
+ExecStart=/usr/bin/flock --nonblock --no-fork /run/omnipdv/backend.lock /usr/bin/node server.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=75
+KillSignal=SIGTERM
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/omnipdv
+ReadOnlyPaths=/etc/omnipdv /srv/omnipdv-private
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+LockPersonality=true
+TasksMax=128
+MemoryMax=768M
+LimitNOFILE=2048
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=omnipdv
+
+[Install]
+WantedBy=multi-user.target

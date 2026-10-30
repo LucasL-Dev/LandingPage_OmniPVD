@@ -108,3 +108,20 @@ test('pagamento inicial recuperado gera uma única entrega e outro Price não au
   f.sub.items.data[0].price.id=f.config.priceId;await f.billing.receive(f.event('evt_initial_recovered'));await f.billing.runQueue();assert.equal(f.calls.length,1);
  }finally{await f.close()}
 });
+
+test('download limits reject oversized installer and parallel streams; worker stop preserves pending jobs',async()=>{
+ const f=await fixture();let server;
+ try{
+  await f.billing.receive(f.event('evt_limit'));f.config.maxInstallerBytes=1;
+  await assert.rejects(f.billing.runQueue());assert.equal(f.calls.length,0);
+  f.config.maxInstallerBytes=100000;await f.billing.runQueue();
+  const token=new URL(f.calls[0].payload.html.match(/https:\/\/download[^"\s<]+/)[0].replaceAll('&amp;','&')).searchParams.get('token');
+  // A held response exercises the connection cap before any provider call.
+  const {EventEmitter}=await import('node:events');const {PassThrough}=await import('node:stream');const response=new PassThrough();response.resume();response.setHeader=()=>{};response.writeHead=()=>response;
+  f.config.maxDownloads=1;const held=f.billing.download({method:'GET',url:'/api/download?token='+token},response);
+  let status;const other=new EventEmitter();other.setHeader=()=>{};other.writeHead=s=>{status=s;return other;};other.end=()=>{};
+  await f.billing.download({method:'GET',url:'/api/download?token='+token},other);assert.equal(status,503);
+  const finished=new Promise(r=>response.once('finish',r));await held;await finished;
+  f.billing.stopQueue();const count=f.calls.length;await f.billing.runQueue();assert.equal(f.calls.length,count);
+ }finally{await f.close();}
+});

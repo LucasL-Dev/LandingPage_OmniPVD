@@ -27,3 +27,7 @@ Antes de ativar qualquer envio, leia [as decisões de infraestrutura](billing/DE
 ## Fase A — autenticação e licenciamento
 
 Login por passkey no navegador, autorização desktop com PKCE, sessões revogáveis e licença offline Ed25519 estão disponíveis de forma opt-in (`AUTH_ENABLED=false` por padrão). Leia [licensing/README.md](licensing/README.md) para arquitetura, vinculação verificada ao cliente Stripe, variáveis, migrações, protocolo do aplicativo e testes. O executável Windows não é alterado por este repositório.
+
+## VPS Ubuntu 24.04 + Node.js 24
+
+O [guia de implantação](docs/DEPLOY-UBUNTU.md) contém os comandos completos, variáveis, systemd, Caddy HTTPS, diretórios privados, backups consistentes, atualização/rollback/restauração e rotação Ed25519. A hospedagem pode ser de produção, mas esta entrega **continua restrita à Stripe de teste**. Nenhuma VPS ou cobrança real é configurada automaticamente. Use `ops/backend.env.example` como referência privada; não versione o ambiente preenchido.
