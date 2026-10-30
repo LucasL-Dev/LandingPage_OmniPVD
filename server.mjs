@@ -5,16 +5,22 @@ import path from 'node:path';
 import Stripe from 'stripe';
 import { loadEnvFile } from 'node:process';
 import { billingRuntime } from './billing/runtime.mjs';
+import { authRuntime } from './auth/runtime.mjs';
 
 export const DEFAULT_DOMAIN = 'https://mediumslateblue-falcon-614408.hostingersite.com';
 export const DEFAULT_STRIPE_PRICE_ID = 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 
 const root = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
 const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
-export function createApp(stripe, billing = null) {
+export function createApp(stripe, billing = null, identity = null) {
 return http.createServer(async (req, res) => {
   try {
-    const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
+    const requestUrl = new URL(req.url, 'http://localhost');
+    const pathname = decodeURIComponent(requestUrl.pathname);
+    if (identity && await identity.handle(req, res, requestUrl)) return;
+    if (!identity && (pathname.startsWith('/api/auth/') || pathname.startsWith('/api/license/') || pathname === '/api/account/claim' || pathname === '/account/login' || pathname === '/.well-known/omnipvd-license-keys.json')) {
+      res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end('{"error":"licensing_unavailable"}'); return;
+    }
     if (pathname === '/api/stripe/webhook') {
       res.setHeader('Cache-Control', 'no-store');
       if (req.method !== 'POST') { res.writeHead(405, { Allow: 'POST' }).end(); return; }
@@ -94,5 +100,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     setInterval(tick, 30_000).unref();
     tick();
   }
-  createApp(stripe, billing).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log(`OmniPDV iniciado na porta ${process.env.PORT || 3000}`));
+  const identity = await authRuntime({stripe, billing, projectRoot: root, priceId: process.env.STRIPE_PRICE_ID || DEFAULT_STRIPE_PRICE_ID});
+  createApp(stripe, billing, identity).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log(`OmniPDV iniciado na porta ${process.env.PORT || 3000}`));
 }
