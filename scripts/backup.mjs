@@ -8,7 +8,10 @@ export async function backupDatabase(source, directory) {
   if(!(await stat(source)).isFile())throw Error('Banco de origem deve existir.');
   await mkdir(directory,{recursive:true,mode:0o700});
   const destination=path.join(directory,`billing-${new Date().toISOString().replace(/[:.]/g,'-')}-${randomUUID()}.sqlite`);
-  const temporary=destination+'.partial';const db=new DatabaseSync(source,{readOnly:true});
+  const temporary=destination+'.partial';
+  // Restrict permissions before SQLite starts copying any private data.
+  const reserved=await open(temporary,'wx',0o600);await reserved.close();
+  const db=new DatabaseSync(source,{readOnly:true});
   try { await backup(db,temporary); } finally {db.close();}
   await chmod(temporary,0o600);
   const check=new DatabaseSync(temporary,{readOnly:true});

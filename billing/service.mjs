@@ -70,7 +70,7 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     const root = await realpath(config.projectRoot);
     if (filename === root || filename.startsWith(root + path.sep) || !filename.toLowerCase().endsWith('.exe')) throw new Error('Instalador deve estar fora do checkout.');
     const info = await stat(filename);
-    if (!info.isFile() || info.size > (config.maxInstallerBytes || 2147483648)) throw new Error('Instalador indisponível.');
+    if (!info.isFile() || info.size < 1 || info.size > (config.maxInstallerBytes || 2147483648)) throw new Error('Instalador indisponível.');
     const origin = new URL(config.downloadOrigin);
     if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('DOWNLOAD_ORIGIN deve ser uma origem HTTPS.');
     return filename;
