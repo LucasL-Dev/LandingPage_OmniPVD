@@ -10,3 +10,8 @@ node_modules/
 *.db
 *.db-*
 private/
+
+# Private signing material (public verification keys may be documented separately).
+*.pem
+*.key
+*.p12

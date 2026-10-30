@@ -23,3 +23,7 @@ O template responsivo e o renderer para preparar o payload do Resend estão em [
 ## Webhook, persistência e download privado
 
 Antes de ativar qualquer envio, leia [as decisões de infraestrutura](billing/DECISIONS.md) e o [guia de configuração, operação e testes com Stripe CLI/Resend](billing/README.md). Requer Node.js 24, volume persistente privado e uma única instância. O instalador não está no repositório.
+
+## Fase A — autenticação e licenciamento
+
+Login por passkey no navegador, autorização desktop com PKCE, sessões revogáveis e licença offline Ed25519 estão disponíveis de forma opt-in (`AUTH_ENABLED=false` por padrão). Leia [licensing/README.md](licensing/README.md) para arquitetura, vinculação verificada ao cliente Stripe, variáveis, migrações, protocolo do aplicativo e testes. O executável Windows não é alterado por este repositório.
