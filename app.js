@@ -1,5 +1,6 @@
 // Configure somente URLs oficiais HTTPS. Não coloque segredos neste arquivo público.
 const config = {
+  apiOrigin: globalThis.OMNIPDV_PUBLIC_CONFIG?.apiOrigin || 'https://api.omnipdv.com.br',
   priceLabel: 'R$ 79,90',
   priceDescription: 'Assinatura OmniPDV',
 };
@@ -33,7 +34,11 @@ document.querySelectorAll('[data-action="subscribe"]').forEach(button => {
     button.disabled = true;
     button.setAttribute('aria-busy', 'true');
     try {
-      const response = await fetch('/api/create-checkout-session', { method: 'POST' });
+      const endpoint = new URL('/api/create-checkout-session', config.apiOrigin);
+      const response = await fetch(endpoint.href, {
+        method: 'POST', mode: 'cors', credentials: 'omit',
+        headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Não foi possível abrir o pagamento.');
       const url = new URL(result.url);

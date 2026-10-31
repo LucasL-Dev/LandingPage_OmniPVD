@@ -20,7 +20,8 @@ Copie [.env.example](../.env.example) para `.env` local ignorado pelo Git, ou us
 | --- | --- |
 | `STRIPE_SECRET_KEY` | Chave de teste do servidor; o Checkout existente não foi alterado |
 | `STRIPE_PRICE_ID` | Price recorrente esperado, já com padrão configurado |
-| `DOMAIN` | Origem do retorno do Checkout; `http://localhost:3000` em teste local |
+| `SITE_ORIGIN` | `https://omnipdv.com.br`: retorno de Checkout/CORS; `http://localhost:4173` em preview local |
+| `API_ORIGIN` | `https://api.omnipdv.com.br`: backend; `DOMAIN` fica apenas como alias legado da origem comercial |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_...` do endpoint **ou** da sessão Stripe CLI; não são intercambiáveis |
 | `BILLING_DB_PATH` | Arquivo absoluto privado, como `/srv/omnipvd-private/billing.sqlite` |
 | `RESEND_API_KEY` | Chave Resend privada |
@@ -72,7 +73,7 @@ Os testes criam banco e binário de fixture exclusivos em diretório temporário
 ## Stripe CLI local e Resend — ativação manual controlada
 
 1. Instale Stripe CLI pela documentação oficial e execute `stripe login` na conta de **teste**.
-2. Mantenha `AUTO_WELCOME_EMAIL_ENABLED=false` e `PRIVATE_DOWNLOAD_ENABLED=false`. Configure chave Stripe de teste, banco local persistente fora do checkout e `DOMAIN=http://localhost:3000`.
+2. Mantenha `AUTO_WELCOME_EMAIL_ENABLED=false` e `PRIVATE_DOWNLOAD_ENABLED=false`. Configure chave Stripe de teste, banco local persistente fora do checkout e `SITE_ORIGIN=http://localhost:4173`.
 3. Encaminhe os eventos:
 
    ```sh
@@ -80,7 +81,7 @@ Os testes criam banco e binário de fixture exclusivos em diretório temporário
    ```
 
 4. Cadastre o `whsec_...` dessa sessão em `STRIPE_WEBHOOK_SECRET`, sem compartilhar o valor, e execute `npm start` (`npm.cmd start` no PowerShell). Reinicie quando alterar variáveis.
-5. Abra a página local e conclua uma assinatura de **teste** com o Price configurado e cartão `4242 4242 4242 4242`, validade futura e CVC de teste. Não use cartões reais. Confira eventos 200 na CLI e estado `pending` no banco. Sem flags, nenhum envio ocorre.
+5. Abra a landing separada em `http://localhost:4173` conforme [guia estático](../docs/deploy/hostinger-static.md) e conclua uma assinatura de **teste** com o Price configurado e cartão `4242 4242 4242 4242`, validade futura e CVC de teste. Não use cartões reais. Confira eventos 200 na CLI e estado `pending` no banco. Sem flags, nenhum envio ocorre.
 6. Use `stripe events resend <event_id> --webhook-endpoint=<endpoint_id>` para repetir para um endpoint de teste cadastrado, ou o recurso Resend do evento no Dashboard. A CLI `listen` encaminha os eventos novos; não confunda o secret dela com o do endpoint cadastrado. A mesma entrega deve continuar única.
 7. `stripe trigger invoice.paid` cria fixtures da CLI que podem pertencer a outro Price ou cliente; isso testa transporte, não o fluxo comercial desta assinatura. Para testar recorrência/falhas reais de teste, use Test Clocks e os cenários oficiais Stripe na mesma assinatura, sem acionar cobranças live.
 8. Para validar Resend end-to-end deliberadamente, confirme primeiro o instalador real e uma origem HTTPS de staging/túnel que encaminhe a esta API, com logs de query desativados. Configure remetente verificado, suporte e `RESEND_API_KEY` no servidor. Use somente destinatário de teste sob seu controle, respeitando as restrições do domínio de teste Resend.
@@ -92,3 +93,7 @@ Referências: https://docs.stripe.com/cli · https://docs.stripe.com/billing/tes
 ## Limitações operacionais
 
 Defina uma política de retenção e exclusão de eventos, dados comerciais, payloads e tokens expirados antes de uso contínuo. Esta etapa não implementa limpeza automática nem monitoração externa; acompanhe fila, falhas, espaço em disco, validade do instalador e backups. Não restaure um backup antigo sem reconciliar os envios já aceitos no Resend, pois isso pode perder o estado de idempotência após a janela do provedor.
+
+## Hospedagem final
+
+O backend permanece exclusivamente na VPS em `https://api.omnipdv.com.br`; a landing estática fica em `https://omnipdv.com.br`. Consulte [o guia Ubuntu](../docs/deploy/ubuntu-vps.md) antes de alterar origens ou publicar. Nenhuma tabela de billing, entrega ou token é migrada/resetada por esta separação.

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createAuth } from './service.mjs';
 import { createAuthHandler } from './http.mjs';
 import { createLicensing } from '../licensing/service.mjs';
+import { deploymentOrigins } from '../config/origins.mjs';
 
 function seconds(name,fallback,min,max) {
   const value=process.env[name]===undefined||process.env[name]===''?fallback:Number(process.env[name]);
@@ -12,9 +13,10 @@ function seconds(name,fallback,min,max) {
 export async function authRuntime({stripe,billing,projectRoot,priceId}) {
   if(process.env.AUTH_ENABLED!=='true')return null;
   if(!stripe||!billing)throw new Error('Licenciamento requer Stripe e o banco persistente de billing.');
-  const originUrl=new URL(process.env.AUTH_ORIGIN);
+  const configuredOrigin=process.env.AUTH_ORIGIN || deploymentOrigins().api;
+  const originUrl=new URL(configuredOrigin);
   const local=process.env.AUTH_ALLOW_LOCALHOST==='true' && originUrl.protocol==='http:' && ['localhost','127.0.0.1'].includes(originUrl.hostname);
-  if((originUrl.protocol!=='https:'&&!local)||originUrl.origin!==process.env.AUTH_ORIGIN)throw new Error('AUTH_ORIGIN deve ser uma origem HTTPS (localhost somente em desenvolvimento).');
+  if((originUrl.protocol!=='https:'&&!local)||originUrl.origin!==configuredOrigin)throw new Error('AUTH_ORIGIN deve ser uma origem HTTPS (localhost somente em desenvolvimento).');
   const rpId=process.env.AUTH_RP_ID;
   if(rpId!==originUrl.hostname)throw new Error('AUTH_RP_ID deve ser o host exato da origem nesta fase.');
   const keyId=process.env.LICENSE_SIGNING_KEY_ID;

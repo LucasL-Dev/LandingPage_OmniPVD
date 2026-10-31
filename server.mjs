@@ -2,19 +2,20 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import Stripe from 'stripe';
 import { loadEnvFile } from 'node:process';
 import { billingRuntime } from './billing/runtime.mjs';
 import { authRuntime } from './auth/runtime.mjs';
+import { deploymentOrigins, DEFAULT_SITE_ORIGIN } from './config/origins.mjs';
+import { testStripeClient } from './config/stripe.mjs';
 
-export const DEFAULT_DOMAIN = 'https://mediumslateblue-falcon-614408.hostingersite.com';
+export const DEFAULT_DOMAIN = DEFAULT_SITE_ORIGIN;
 export const DEFAULT_STRIPE_PRICE_ID = 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 
 const root = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 export function createApp(stripe, billing = null, identity = null) {
 return http.createServer(async (req, res) => {
   try {
+    const origins = deploymentOrigins();
     const requestUrl = new URL(req.url, 'http://localhost');
     const pathname = decodeURIComponent(requestUrl.pathname);
     if (identity && await identity.handle(req, res, requestUrl)) return;
@@ -50,15 +51,30 @@ return http.createServer(async (req, res) => {
     if (pathname === '/api/create-checkout-session') {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
+      // The only browser cross-origin route. Auth, webhooks and downloads get no CORS headers.
+      res.setHeader('Vary', 'Origin');
+      const origin = req.headers.origin;
+      if (origin && origin !== origins.site) {
+        res.writeHead(403).end(JSON.stringify({ error: 'Origem não permitida.' })); return;
+      }
+      if (origin === origins.site) res.setHeader('Access-Control-Allow-Origin', origins.site);
+      if (req.method === 'OPTIONS') {
+        const method = req.headers['access-control-request-method'];
+        const headers = (req.headers['access-control-request-headers'] || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        if (origin !== origins.site || method !== 'POST' || headers.some(value => value !== 'content-type')) {
+          res.writeHead(403).end(JSON.stringify({ error: 'Preflight não permitido.' })); return;
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'POST');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.writeHead(204).end(); return;
+      }
+      if (req.method !== 'POST') { res.setHeader('Allow', 'POST, OPTIONS'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
+      if (req.headers.cookie) { res.writeHead(400).end(JSON.stringify({ error: 'Checkout não utiliza cookies.' })); return; }
       if (!stripe) {
         res.writeHead(503).end(JSON.stringify({ error: 'A assinatura está sendo configurada. Tente novamente em breve.' })); return;
       }
       try {
-        const domain = new URL(process.env.DOMAIN || DEFAULT_DOMAIN).origin;
-        if (req.headers.origin && req.headers.origin !== domain) {
-          res.writeHead(403).end(JSON.stringify({ error: 'Origem não permitida.' })); return;
-        }
+        const domain = origins.site;
         const session = await stripe.checkout.sessions.create({
           ui_mode: 'hosted_page',
           mode: 'subscription',
@@ -80,20 +96,26 @@ return http.createServer(async (req, res) => {
       }
       return;
     }
-    // Somente arquivos públicos: nunca servir .env, Git, dependências ou código do servidor.
-    if (!['/', '/index.html', '/styles.css', '/app.js', '/assets/omnipdv.png', '/assets/omnipdv-app.png'].includes(pathname)) {
+    if (pathname === '/health' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }).end('{"status":"ok"}'); return;
+    }
+    if ((pathname === '/' || pathname === '/index.html') && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(302, { Location: origins.site, 'Cache-Control': 'no-store' }).end(); return;
+    }
+    // Logo is required by the API-hosted account page. No commercial frontend or private files.
+    if (pathname !== '/assets/omnipdv.png' || !['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(404).end('Página não encontrada'); return;
     }
-    const filename = path.resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
-    if (!filename.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+    const filename = path.join(root, 'assets', 'omnipdv.png');
     const body = await readFile(filename);
-    res.writeHead(200, { 'Content-Type': types[path.extname(filename)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff' }).end(body);
+    res.writeHead(200, { 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff' }).end(req.method === 'HEAD' ? undefined : body);
   } catch { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Página não encontrada'); }
 });
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { loadEnvFile(path.join(root, '.env')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-  const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
+  deploymentOrigins(); // Fail startup on malformed public URL configuration.
+  const stripe = testStripeClient();
   const billing = billingRuntime(stripe, root, process.env.STRIPE_PRICE_ID || DEFAULT_STRIPE_PRICE_ID);
   if (billing) {
     const tick = () => billing.runQueue().catch(() => console.error('Fila indisponível; verifique a configuração privada.'));
@@ -101,5 +123,5 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     tick();
   }
   const identity = await authRuntime({stripe, billing, projectRoot: root, priceId: process.env.STRIPE_PRICE_ID || DEFAULT_STRIPE_PRICE_ID});
-  createApp(stripe, billing, identity).listen(Number(process.env.PORT || 3000), '0.0.0.0', () => console.log(`OmniPDV iniciado na porta ${process.env.PORT || 3000}`));
+  createApp(stripe, billing, identity).listen(Number(process.env.PORT || 3000), process.env.HOST || '127.0.0.1', () => console.log(`OmniPDV iniciado na porta ${process.env.PORT || 3000}`));
 }

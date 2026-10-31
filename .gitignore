@@ -15,3 +15,7 @@ private/
 *.pem
 *.key
 *.p12
+
+# Generated public deployment artifacts
+dist-landing/
+omnipdv-landing.zip
