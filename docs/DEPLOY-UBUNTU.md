@@ -1,14 +1,16 @@
 # OmniPDV backend — Ubuntu 24.04 LTS / Node.js 24
 
-Este guia prepara uma **única instância** contínua em VPS, com Caddy, systemd, SQLite WAL privado e worker no mesmo processo. Os comandos são instruções para execução futura pelo operador: nenhuma VPS, DNS, conta Stripe ou envio Resend foi alterado nesta entrega. A branch é `feat/ubuntu-vps-deployment`, derivada de `feat/subscription-licensing`.
+**VPS existente:** siga primeiro [DEPLOY-PRODUCTION-INTEGRATION.md](DEPLOY-PRODUCTION-INTEGRATION.md), o roteiro definitivo para `~/omnipdv-src`. Este documento mantém a referência completa de operação, backup, recuperação e rotação; não reinstale componentes ou sobrescreva arquivos privados já configurados.
+
+Este guia prepara uma **única instância** contínua em VPS, com Caddy, systemd, SQLite WAL privado e worker no mesmo processo. Os comandos são instruções para execução futura pelo operador: nenhuma VPS, DNS, conta Stripe ou envio Resend foi alterado nesta entrega. A branch é `feat/production-integration`, baseada em `feat/ubuntu-vps-deployment` e integrada a `feat/static-landing-hostinger`.
 
 **Produção de infraestrutura não significa cobrança live.** O runtime recusa chaves que não sejam `sk_test_...`; os webhooks continuam rejeitando eventos live. Use somente Sandbox/ambiente de teste na Stripe. Não troque para chave live para testar deploy.
 
 ## 1. Definir domínio e armazenamento
 
-Exemplos abaixo: `pdv.example.com` e porta interna 3000. Substitua por domínio que você controla. Crie registro A (e AAAA somente se IPv6 estiver funcional) apontando para a VPS. Libere TCP 80/443 na VPS e no firewall Hostinger; nunca exponha a porta 3000. Se houver proxy/CDN, valide TLS e origens; inicialmente use DNS direto.
+Domínios definitivos: `https://omnipdv.com.br` permanece estático na hospedagem compartilhada, e `https://api.omnipdv.com.br` atende a API, passkeys, webhooks e downloads na VPS. Não apontar o domínio raiz para a VPS. DNS e firewall já configurados não são alterados por esta entrega.
 
-Escolha um hostname estável para página, `/account/login`, API e downloads. `DOMAIN=AUTH_ORIGIN=DOWNLOAD_ORIGIN=https://SEU_HOST`, `AUTH_RP_ID=SEU_HOST`. Não renomeie depois de cadastrar passkeys. **Uma passkey de localhost não autentica automaticamente no domínio público.** Use o procedimento de convite e vinculação verificada já documentado em `licensing/README.md` para cadastrar passkeys no novo RP; preserve as contas/dados existentes, sem redefinir vínculos informalmente.
+Configure `SITE_ORIGIN=https://omnipdv.com.br`, `API_ORIGIN=AUTH_ORIGIN=DOWNLOAD_ORIGIN=https://api.omnipdv.com.br` e `AUTH_RP_ID=api.omnipdv.com.br`. O alias legado `DOMAIN` representa somente o site comercial. Antes de trocar um RP ID/issuer existente, consulte a seção de compatibilidade do guia definitivo; passkeys não migram por mudança de variável e nenhum vínculo deve ser apagado.
 
 Diretórios:
 
@@ -24,7 +26,7 @@ Diretórios:
 
 Não use SQLite em NFS/SMB, filesystem efêmero ou múltiplas réplicas. Disco persistente local da VPS deve ter espaço monitorado. Não rode PM2/cluster, segundo worker ou um `npm start` paralelo ao serviço.
 
-## 2. Instalar dependências do sistema
+## 2. Referência para instalação nova — pular na VPS existente
 
 Em Ubuntu 24.04, com operador sudo:
 
@@ -56,29 +58,9 @@ Se usuário/diretórios já existem, confira-os e pule sua criação; **não apa
 
 ## 3. Preparar release de código
 
-Como operador sem privilégios, clone/revise a branch; não execute npm como root:
+Na VPS existente, reutilize `~/omnipdv-src`, confira alterações locais e siga o roteiro de [release imutável no guia definitivo](DEPLOY-PRODUCTION-INTEGRATION.md). Não clonar por cima da pasta existente nem executar `git reset --hard`.
 
-```bash
-git clone --branch feat/ubuntu-vps-deployment https://github.com/LucasL-Dev/LandingPage_OmniPVD.git ~/omnipdv-src
-cd ~/omnipdv-src
-npm ci
-npm run check
-npm test
-REVISION=$(git rev-parse HEAD)
-sudo install -d -m 0755 "/opt/omnipdv/releases/$REVISION"
-sudo cp -a . "/opt/omnipdv/releases/$REVISION/"
-sudo chown -R root:root "/opt/omnipdv/releases/$REVISION"
-```
-
-Não tenha `.env`, banco, instalador ou chave nesse checkout. O `cp` inclui somente o checkout revisado e `node_modules`; confirme antes com `git status --short` e inspecione arquivos ignorados sem imprimir seu conteúdo. Em deploy recorrente, reutilize o clone e selecione uma revisão aprovada. Nunca dê `git pull` dentro da release ativa.
-
-Na primeira instalação, **se `/opt/omnipdv/current` ainda não existir**:
-
-```bash
-sudo ln -s "/opt/omnipdv/releases/$REVISION" /opt/omnipdv/current
-```
-
-Se já existir, use o procedimento de atualização abaixo.
+A release usa `git archive` de uma revisão aprovada e `npm ci` como operador não root. Não use `cp -a .`: isso pode copiar `.env`, dados ignorados, chaves ou instaladores do diretório de desenvolvimento. Banco, chaves e ambiente permanecem fora de `/opt/omnipdv/releases/REVISAO`. O serviço não deve apontar para `~/omnipdv-src`, porque o sandbox systemd usa `ProtectHome=true`.
 
 ## 4. Chave, instalador e ambiente privado
 
@@ -108,16 +90,18 @@ Não sobrescreva um `backend.env` já configurado: nesse caso, faça cópia priv
 | --- | --- |
 | `DEPLOY_ENV`, `NODE_ENV` | `production`, `production`; use `staging` na configuração de homologação |
 | `HOST`, `PORT` | `127.0.0.1`, `3000` |
-| `DOMAIN` | Origem HTTPS pública, sem barra final |
+| `SITE_ORIGIN` | `https://omnipdv.com.br`, retorno comercial e CORS de Checkout |
+| `API_ORIGIN` | `https://api.omnipdv.com.br`, independente da origem comercial |
+| `DOMAIN` | Alias legado da origem comercial; preferir SITE_ORIGIN |
 | `STRIPE_SECRET_KEY` | Chave privada `sk_test_...` da Sandbox correta, nunca live |
 | `STRIPE_PRICE_ID` | Price recorrente de teste correspondente ao plano |
 | `STRIPE_WEBHOOK_SECRET` | Segredo do endpoint público de teste, não o segredo da Stripe CLI local |
 | `BILLING_DB_PATH` | `/var/lib/omnipdv/billing.sqlite`, absoluto, fora do checkout |
 | `AUTH_ENABLED` | `true` |
-| `AUTH_ORIGIN`, `AUTH_RP_ID` | Origem HTTPS igual a DOMAIN e hostname exato |
+| `AUTH_ORIGIN`, `AUTH_RP_ID` | `https://api.omnipdv.com.br` e `api.omnipdv.com.br` |
 | `AUTH_ALLOW_LOCALHOST` | `false` |
 | `LICENSE_PRIVATE_KEY_PATH`, `LICENSE_SIGNING_KEY_ID` | Arquivo privado existente e identificador público estável |
-| `DOWNLOAD_ORIGIN` | Mesma origem HTTPS, mesmo com download inicialmente desligado |
+| `DOWNLOAD_ORIGIN` | `https://api.omnipdv.com.br`, mesmo com download inicialmente desligado |
 | `PRIVATE_DOWNLOAD_ENABLED` | `false` inicialmente; ativar somente após validar instalador privado real |
 | `PRIVATE_INSTALLER_PATH` | `/srv/omnipdv-private/OmniPDV-Setup.exe` |
 | `AUTO_WELCOME_EMAIL_ENABLED` | `false` inicialmente; habilitar envio somente em teste controlado aprovado |
@@ -156,41 +140,18 @@ O usuário de serviço não tem login interativo; código/chave/instalador são 
 
 ## 6. HTTPS com Caddy
 
-Não configure `root` ou `file_server`: isso exporia arquivos que o backend bloqueia. O Caddy só encaminha para loopback.
+Caddy e firewall já existem. Não instalar Nginx, não substituir o Caddyfile inteiro e não configurar `root`/`file_server`. `ops/Caddyfile` é o modelo exclusivo da API `api.omnipdv.com.br`, com proxy para `127.0.0.1:3000`, limite de corpo e sem logs que exponham URLs privadas.
 
-```bash
-sudo install -m 0644 /opt/omnipdv/current/ops/Caddyfile /etc/caddy/Caddyfile
-sudo install -d -m 0755 /etc/systemd/system/caddy.service.d
-printf '%s\n' '[Service]' 'Environment=OMNIPDV_DOMAIN=pdv.example.com' | sudo tee /etc/systemd/system/caddy.service.d/omnipdv.conf >/dev/null
-sudo systemctl daemon-reload
-sudo env OMNIPDV_DOMAIN=pdv.example.com caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
-sudo systemctl enable --now caddy
-sudo systemctl restart caddy
-curl --fail https://pdv.example.com/healthz
-curl --fail https://pdv.example.com/readyz
-```
+Integre o bloco de API à configuração existente preservando outros hosts e o bloco global. O CORS pertence ao Node, não ao Caddy. Após revisão manual, valide e recarregue conforme o guia definitivo. Nesta tarefa apenas o parser local foi executado: nenhum servidor Caddy, certificado ACME ou DNS da VPS foi iniciado/modificado.
 
-Substitua o hostname nos comandos. A primeira inicialização do Caddy em servidor real obtém certificado automaticamente; exige DNS e 80/443 funcionais. Não use localhost como domínio comercial. Não ative HSTS includeSubDomains/preload sem avaliar todos os subdomínios.
-
-O exemplo não registra access logs e exclui logs de erro HTTP que podem carregar URI completa. **Query strings contêm códigos/tokens**: não habilite logs brutos de URL, cabeçalhos, cookies, corpo, traces/APM ou analytics em autenticação/download. O proxy remove cabeçalhos de IP encaminhado e o backend usa o IP do socket; clientes atrás do proxy compartilham os limites existentes. Não passe a confiar em `X-Forwarded-For` arbitrário para contornar limites. Escala e limitação por cliente real exigem política de proxy adicional, fora desta entrega.
-
-Se usar UFW, antes de habilitar preserve seu acesso administrativo e confira a porta SSH real:
-
-```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw status verbose
-```
-
-Habilite somente após conferir regras e console de recuperação; não abra 3000. No painel Hostinger, aplique a mesma restrição. Verifique `ss -ltnp`: Node deve escutar apenas `127.0.0.1:3000`.
+O proxy remove cabeçalhos de IP encaminhado. A aplicação usa IP do socket; clientes atrás do proxy compartilham os limites. Não confiar em `X-Forwarded-For` arbitrário para contornar proteção. Não ativar logs de corpo, URL completa, cookies, Authorization ou tokens, inclusive em APM/traces. Não abrir porta 3000 no firewall.
 
 ## 7. Webhook Stripe e Resend
 
 No Dashboard Stripe, selecione explicitamente a **Sandbox/modo teste** usado pela chave e pelo Price. Crie destino de eventos para:
 
 ```text
-https://pdv.example.com/api/stripe/webhook
+https://api.omnipdv.com.br/api/stripe/webhook
 ```
 
 Selecione `invoice.paid`, `invoice.payment_failed`, `invoice.payment_action_required`, `invoice.voided`, `invoice.marked_uncollectible`, `customer.subscription.created`, `customer.subscription.updated` e `customer.subscription.deleted`. Copie o segredo desse destino privado para `STRIPE_WEBHOOK_SECRET` com `sudoedit`, reinicie `omnipdv` e use compras/cancelamentos **somente de teste**. Não altere assinaturas reais. O corpo original é verificado por assinatura, limite 1 MiB; erros transitórios respondem 503 para retries e eventos persistidos são idempotentes.
@@ -208,12 +169,12 @@ sudo -u omnipdv sqlite3 -readonly /var/lib/omnipdv/billing.sqlite 'SELECT status
 Node limita cabeçalhos a 16 KiB, corpo webhook a 1 MiB (rotas de autenticação mantêm seu próprio limite), 128 requisições simultâneas, 256 conexões e 60 criações de Checkout por minuto no processo (limite global compartilhado). Há timeouts de HTTP/Stripe e até quatro downloads simultâneos por padrão. O instalador é transmitido por stream e precisa caber no limite de tamanho. A unidade limita memória a 768 MiB e tarefas a 128; ajuste somente com medição da VPS e mantenha monitoramento de disco/backups. A fila e históricos não têm limpeza automática: planeje retenção sem perder idempotência/auditoria.
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/.env
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/billing.sqlite
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/license.pem
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/OmniPDV-Setup.exe
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/ops/backend.env.example
-curl -s -o /dev/null -w '%{http_code}\n' https://pdv.example.com/api/download
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/.env
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/billing.sqlite
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/license.pem
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/OmniPDV-Setup.exe
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/ops/backend.env.example
+curl -s -o /dev/null -w '%{http_code}\n' https://api.omnipdv.com.br/api/download
 ```
 
 Os cinco primeiros devem retornar 404; download sem token válido deve ser negado (403 ou 503 enquanto desligado). O JWKS público é intencional e não contém a chave privada. Não teste links reais contendo tokens em terminais gravados. Downloads permanecem bearer temporários de 48h e revalidam assinatura na Stripe; não são prova de identidade nem substituem login/licença do desktop.

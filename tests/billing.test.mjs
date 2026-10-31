@@ -125,3 +125,14 @@ test('download limits reject oversized installer and parallel streams; worker st
   f.billing.stopQueue();const count=f.calls.length;await f.billing.runQueue();assert.equal(f.calls.length,count);
  }finally{await f.close();}
 });
+
+test('Resend rate-limited mantém diagnóstico seguro, payload e chave idempotente após recuperação',async()=>{
+ const f=await fixture();try{
+  await f.billing.receive(f.event('evt_provider_limit'));
+  const original=f.resend.emails.send;const attempts=[];
+  f.resend.emails.send=async(payload,options)=>{attempts.push({payload,key:options.idempotencyKey});return{error:{name:'rate_limit_exceeded',message:'PRIVATE_PROVIDER_DETAILS'},data:null};};
+  await f.billing.runQueue();const failed=f.billing.db.prepare('SELECT status,last_error FROM deliveries').get();assert.deepEqual({...failed},{status:'retry',last_error:'provider_rate_limited'});
+  f.resend.emails.send=async(payload,options)=>{attempts.push({payload,key:options.idempotencyKey});return original(payload,options);};
+  f.advance(61_000);await f.billing.runQueue();assert.deepEqual(attempts[0],attempts[1]);assert.equal(f.billing.db.prepare('SELECT status FROM deliveries').get().status,'sent');
+ }finally{await f.close()}
+});

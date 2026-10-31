@@ -4,16 +4,16 @@ import http from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import Stripe from 'stripe';
 import { loadEnvFile } from 'node:process';
 import { billingRuntime } from './billing/runtime.mjs';
 import { authRuntime } from './auth/runtime.mjs';
+import { deploymentOrigins, DEFAULT_SITE_ORIGIN } from './config/origins.mjs';
+import { testStripeClient } from './config/stripe.mjs';
 
-export const DEFAULT_DOMAIN = 'https://mediumslateblue-falcon-614408.hostingersite.com';
+export const DEFAULT_DOMAIN = DEFAULT_SITE_ORIGIN;
 export const DEFAULT_STRIPE_PRICE_ID = 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 
 const root = path.resolve(fileURLToPath(new URL('.', import.meta.url)));
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 export function createApp(stripe, billing = null, identity = null, runtime = {}) {
 let activeRequests=0,checkoutWindow=Date.now(),checkoutHits=0;
 const server=http.createServer({maxHeaderSize:16384,requestTimeout:30000,headersTimeout:15000,keepAliveTimeout:5000},async (req, res) => {
@@ -22,9 +22,10 @@ const server=http.createServer({maxHeaderSize:16384,requestTimeout:30000,headers
   if(activeRequests>=128){res.writeHead(503,{'Retry-After':'30'}).end();return;}
   activeRequests++;let finished=false;const release=()=>{if(!finished){finished=true;activeRequests--;}};res.once('finish',release);res.once('close',release);
   try {
+    const origins = deploymentOrigins();
     const requestUrl = new URL(req.url, 'http://localhost');
     const pathname = decodeURIComponent(requestUrl.pathname);
-    if (pathname==='/healthz' || pathname==='/readyz') {
+    if (pathname==='/health' || pathname==='/healthz' || pathname==='/readyz') {
       res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json');
       if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{Allow:'GET, HEAD'}).end();return;}
       let ok=true;try{if(pathname==='/readyz')ok=runtime.ready?runtime.ready():true;}catch{ok=false;}
@@ -63,17 +64,32 @@ const server=http.createServer({maxHeaderSize:16384,requestTimeout:30000,headers
     if (pathname === '/api/create-checkout-session') {
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
+      // The only browser cross-origin route. Auth, webhooks and downloads get no CORS headers.
+      res.setHeader('Vary', 'Origin');
+      const origin = req.headers.origin;
+      if (origin && origin !== origins.site) {
+        res.writeHead(403).end(JSON.stringify({ error: 'Origem não permitida.' })); return;
+      }
+      if (origin === origins.site) res.setHeader('Access-Control-Allow-Origin', origins.site);
+      if (req.method === 'OPTIONS') {
+        const method = req.headers['access-control-request-method'];
+        const headers = (req.headers['access-control-request-headers'] || '').split(',').map(value => value.trim().toLowerCase()).filter(Boolean);
+        if (origin !== origins.site || method !== 'POST' || headers.some(value => value !== 'content-type')) {
+          res.writeHead(403).end(JSON.stringify({ error: 'Preflight não permitido.' })); return;
+        }
+        res.setHeader('Access-Control-Allow-Methods', 'POST');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+        res.writeHead(204).end(); return;
+      }
+      if (req.method !== 'POST') { res.setHeader('Allow', 'POST, OPTIONS'); res.writeHead(405).end(JSON.stringify({ error: 'Método não permitido.' })); return; }
+      if (req.headers.cookie) { res.writeHead(400).end(JSON.stringify({ error: 'Checkout não utiliza cookies.' })); return; }
       if (!stripe) {
         res.writeHead(503).end(JSON.stringify({ error: 'A assinatura está sendo configurada. Tente novamente em breve.' })); return;
       }
       if(Date.now()-checkoutWindow>=60000){checkoutWindow=Date.now();checkoutHits=0;}
       if(++checkoutHits>60){res.writeHead(429,{'Retry-After':'60'}).end(JSON.stringify({error:'Tente novamente em instantes.'}));return;}
       try {
-        const domain = new URL(process.env.DOMAIN || DEFAULT_DOMAIN).origin;
-        if (req.headers.origin && req.headers.origin !== domain) {
-          res.writeHead(403).end(JSON.stringify({ error: 'Origem não permitida.' })); return;
-        }
+        const domain = origins.site;
         const session = await stripe.checkout.sessions.create({
           ui_mode: 'hosted_page',
           mode: 'subscription',
@@ -95,14 +111,16 @@ const server=http.createServer({maxHeaderSize:16384,requestTimeout:30000,headers
       }
       return;
     }
-    // Somente arquivos públicos: nunca servir .env, Git, dependências ou código do servidor.
-    if (!['/', '/index.html', '/styles.css', '/app.js', '/assets/omnipdv.png', '/assets/omnipdv-app.png'].includes(pathname)) {
+    if ((pathname === '/' || pathname === '/index.html') && (req.method === 'GET' || req.method === 'HEAD')) {
+      res.writeHead(302, { Location: origins.site, 'Cache-Control': 'no-store' }).end(); return;
+    }
+    // Logo is required by the API-hosted account page. No commercial frontend or private files.
+    if (pathname !== '/assets/omnipdv.png' || !['GET', 'HEAD'].includes(req.method)) {
       res.writeHead(404).end('Página não encontrada'); return;
     }
-    const filename = path.resolve(root, `.${pathname === '/' ? '/index.html' : pathname}`);
-    if (!filename.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
+    const filename = path.join(root, 'assets', 'omnipdv.png');
     const body = await readFile(filename);
-    res.writeHead(200, { 'Content-Type': types[path.extname(filename)] || 'application/octet-stream', 'X-Content-Type-Options': 'nosniff' }).end(body);
+    res.writeHead(200, { 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff' }).end(req.method === 'HEAD' ? undefined : body);
   } catch { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }).end('Página não encontrada'); }
 });
 server.maxConnections=256;server.maxRequestsPerSocket=100;
@@ -115,7 +133,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       try {loadEnvFile(path.join(root,'.env'));}catch(error){if(error.code!=='ENOENT')throw error;}
     }
     const limits=validateDeployment();
-    const stripe=process.env.STRIPE_SECRET_KEY?new Stripe(process.env.STRIPE_SECRET_KEY,{timeout:15000,maxNetworkRetries:1}):null;
+    const stripe=testStripeClient(process.env.STRIPE_SECRET_KEY,{timeout:15000,maxNetworkRetries:1});
     billing=billingRuntime(stripe,root,process.env.STRIPE_PRICE_ID||DEFAULT_STRIPE_PRICE_ID,limits);
     const identity=await authRuntime({stripe,billing,projectRoot:root,priceId:process.env.STRIPE_PRICE_ID||DEFAULT_STRIPE_PRICE_ID});
     server=createApp(stripe,billing,identity,{ready:()=>!stopping && (!billing || billing.db.prepare('SELECT 1 AS ok').get().ok===1) && (!worker || worker.status().ok)});

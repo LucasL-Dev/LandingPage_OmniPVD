@@ -12,7 +12,10 @@
     "auth:admin": "node auth/admin.mjs",
     "license:keygen": "node licensing/keygen.mjs",
     "backup": "node scripts/backup.mjs",
-    "license:public": "node scripts/license-public.mjs"
+    "license:public": "node scripts/license-public.mjs",
+    "build:landing": "node scripts/build-landing.mjs",
+    "zip:landing": "node scripts/zip-landing.mjs",
+    "preview:landing": "node scripts/preview-landing.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",
@@ -23,5 +26,8 @@
   },
   "engines": {
     "node": ">=24 <25"
+  },
+  "devDependencies": {
+    "fflate": "0.8.3"
   }
 }

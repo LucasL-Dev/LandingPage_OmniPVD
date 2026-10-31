@@ -6,7 +6,7 @@ A primeira implementação usa Node.js 24, SQLite (`node:sqlite`) em disco persi
 
 ## Decisões necessárias na hospedagem
 
-1. Confirmar que o plano Hostinger executa Node.js 24 com processo contínuo, endpoint HTTPS público e volume persistente gravável. Hospedagem somente estática ou disco efêmero não é suficiente.
+1. A arquitetura informada usa VPS Hostinger Ubuntu 24.04 com Node.js 24 para a API; a hospedagem compartilhada serve apenas a landing estática. Manter processo contínuo e volume persistente privado, com endpoint HTTPS da API. O deploy manual está documentado em docs/deploy/ubuntu-vps.md.
 2. Reservar diretório privado fora do checkout para SQLite e instalador. Fazer backups do banco (incluindo WAL por procedimento SQLite), limitar permissões e não colocá-lo no Git. Em múltiplas réplicas, migrar a fila/locks para banco compartilhado antes de escalar.
 3. Fornecer o `.exe` real no caminho privado. Esta etapa não gera, publica ou hospeda um instalador fictício. Em alternativa, escolher futuramente armazenamento privado S3 compatível e adaptar o serviço.
 4. Configurar domínio HTTPS, remetente verificado no Resend, suporte e segredos por variáveis seguras. Não há credenciais no código.

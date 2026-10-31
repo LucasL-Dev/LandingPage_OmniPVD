@@ -2,7 +2,7 @@ name: Backend Ubuntu readiness
 on:
   pull_request:
   push:
-    branches: [feat/ubuntu-vps-deployment]
+    branches: [feat/ubuntu-vps-deployment, feat/static-landing-hostinger, feat/production-integration]
 permissions:
   contents: read
 jobs:
@@ -17,6 +17,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - run: npm run zip:landing
       - name: Validate systemd unit syntax without starting services
         run: |
           NODE_EXEC=$(command -v node)
@@ -29,4 +30,4 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y caddy
-          OMNIPDV_DOMAIN=pdv.example.com caddy adapt --config ops/Caddyfile --adapter caddyfile > /tmp/omnipdv-caddy.json
+          OMNIPDV_DOMAIN=api.omnipdv.com.br caddy adapt --config ops/Caddyfile --adapter caddyfile > /tmp/omnipdv-caddy.json

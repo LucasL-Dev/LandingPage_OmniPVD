@@ -1,9 +1,11 @@
 import path from 'node:path';
+import { deploymentOrigins } from '../config/origins.mjs';
 export function validateDeployment(env=process.env) {
   const stage=env.DEPLOY_ENV || 'development';
   if(!['development','staging','production'].includes(stage))throw Error('DEPLOY_ENV inválido.');
   // Hosting in production does not enable live Stripe billing.
-  if(env.STRIPE_SECRET_KEY && !env.STRIPE_SECRET_KEY.startsWith('sk_test_'))throw Error('Somente chave Stripe de teste é permitida nesta entrega.');
+  if(env.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY))throw Error('Somente chave Stripe de teste é permitida nesta entrega.');
+  deploymentOrigins(env);
   const flags=['AUTH_ENABLED','AUTH_ALLOW_LOCALHOST','AUTO_WELCOME_EMAIL_ENABLED','PRIVATE_DOWNLOAD_ENABLED'];
   for(const flag of flags)if(env[flag] && !['true','false'].includes(env[flag]))throw Error(`Flag inválida: ${flag}`);
   const integer=(key,fallback,min,max)=>{const value=Number(env[key]||fallback);if(!Number.isSafeInteger(value)||value<min||value>max)throw Error(`Limite inválido: ${key}`);return value;};
@@ -11,11 +13,11 @@ export function validateDeployment(env=process.env) {
   const queueInterval=integer('QUEUE_INTERVAL_SECONDS',30,5,300)*1000;
   if(stage!=='development') {
     if(env.HOST!=='127.0.0.1')throw Error('VPS exige HOST=127.0.0.1 atrás do proxy HTTPS.');
-    for(const key of ['DOMAIN','AUTH_ORIGIN','DOWNLOAD_ORIGIN']){
-      let url;try{url=new URL(env[key]);}catch{throw Error(`Origem ausente: ${key}`);}
-      if(url.protocol!=='https:'||url.origin!==env[key]||url.username||url.password)throw Error(`Origem HTTPS inválida: ${key}`);
+    const origins=deploymentOrigins(env);
+    if(!origins.site.startsWith('https://') || !origins.api.startsWith('https://') || origins.site===origins.api)throw Error('Configure origens HTTPS distintas para o site comercial e a API.');
+    for(const key of ['AUTH_ORIGIN','DOWNLOAD_ORIGIN']) {
+      if(env[key]!==origins.api)throw Error('Autenticação e downloads devem usar a origem estável da API.');
     }
-    if(env.DOMAIN!==env.AUTH_ORIGIN || env.DOMAIN!==env.DOWNLOAD_ORIGIN)throw Error('Checkout, passkeys e downloads devem usar a mesma origem estável.');
     if(env.AUTH_RP_ID!==new URL(env.AUTH_ORIGIN).hostname || env.AUTH_ALLOW_LOCALHOST!=='false')throw Error('Configure RP ID exato e desabilite localhost na VPS.');
     for(const key of ['BILLING_DB_PATH','LICENSE_PRIVATE_KEY_PATH'])if(!env[key]||!path.isAbsolute(env[key]))throw Error(`Caminho privado absoluto obrigatório: ${key}`);
     for(const key of ['STRIPE_SECRET_KEY','STRIPE_PRICE_ID','STRIPE_WEBHOOK_SECRET'])if(!env[key])throw Error(`Configuração obrigatória: ${key}`);

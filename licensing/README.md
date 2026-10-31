@@ -37,7 +37,7 @@ Requer Node.js 24, HTTPS, uma única instância e o volume SQLite privado já ut
 | Variável nova | Padrão / uso |
 | --- | --- |
 | `AUTH_ENABLED` | `false`; somente `true` habilita a fase A |
-| `AUTH_ORIGIN` | Origem HTTPS sem barra final do login, também emissor das licenças |
+| `AUTH_ORIGIN` | Origem HTTPS sem barra final do login, também emissor das licenças; configuração final `https://api.omnipdv.com.br`, fallback para `API_ORIGIN` se ausente |
 | `AUTH_RP_ID` | Host exato dessa origem, sem protocolo/porta |
 | `AUTH_ALLOW_LOCALHOST` | `false`; `true` permite HTTP localhost/127.0.0.1 somente em desenvolvimento |
 | `AUTH_ACCESS_TTL_SECONDS` | `600`, limites 60–900 |
@@ -58,7 +58,7 @@ npm run license:keygen -- /CAMINHO/PRIVADO/omnipvd-license.pem
 
 No Windows, use um caminho absoluto privado como `C:\omnipvd-private\license.pem`. O comando cria o arquivo com exclusividade (não sobrescreve), usa permissões restritas onde suportadas e imprime somente a chave pública. Proteja chave, diretório, banco e backups; configure ACLs no Windows. Não reutilize a chave Stripe como chave de assinatura.
 
-Para desenvolvimento local: `AUTH_ORIGIN=http://localhost:3000`, `AUTH_RP_ID=localhost`, `AUTH_ALLOW_LOCALHOST=true`, `DOMAIN=http://localhost:3000`. Em produção, HTTPS e `AUTH_ALLOW_LOCALHOST=false`. O suporte a passkeys locais depende do navegador/autenticador e é separado da licença offline.
+Para desenvolvimento local: `AUTH_ORIGIN=http://localhost:3000`, `AUTH_RP_ID=localhost`, `AUTH_ALLOW_LOCALHOST=true`, `SITE_ORIGIN=http://localhost:4173`, `API_ORIGIN=http://localhost:3000`. Em produção, HTTPS e `AUTH_ALLOW_LOCALHOST=false`. O suporte a passkeys locais depende do navegador/autenticador e é separado da licença offline.
 
 ## Migrações e tabelas
 
@@ -159,3 +159,7 @@ Os testes usam chaves/passkeys criptográficas sintéticas, Stripe/Resend simula
 Também foi validado localmente no Chromium com autenticador virtual: cadastro e login por passkey, cookie HttpOnly, consentimento, callback loopback, PKCE, troca de token, consulta sem assinatura e layout móvel. Esse teste não utilizou clientes ou pagamentos reais.
 
 Antes de ativar na hospedagem: backup consistente, domínio estável com HTTPS, chave privada/ACLs, variáveis seguras, conta de teste vinculada por operador, teste ponta a ponta com desktop de desenvolvimento e política de recuperação/dispositivos definida. Esta fase não impõe limite comercial de dispositivos. `AUTH_ENABLED=false` permite desativar as rotas novas sem apagar tabelas ou alterar billing. Não faça rollback do arquivo SQLite para um backup antigo sem reconciliar as entregas já realizadas no Resend.
+
+## Site comercial separado
+
+O login, cookies, JWKS e rotas de licença permanecem na origem da API, não na landing. Não há CORS de autenticação para o site comercial. Leia o [guia Ubuntu](../docs/deploy/ubuntu-vps.md) antes de trocar `AUTH_ORIGIN` ou RP ID: passkeys, cookies e confiança do issuer não migram automaticamente entre domínios. As credenciais existentes não são reescritas nem removidas pelo código.

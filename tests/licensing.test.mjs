@@ -246,3 +246,18 @@ test('segredos de sessão persistem somente como hashes e novas passkeys exigem 
   assert.ok((await f.auth.registrationOptions({},signedIn.session)).options.challenge);
  }finally{await f.close()}
 });
+
+test('licença já assinada e sessão persistida continuam válidas após integração e rotação pública',async()=>{
+ const f=await fixture();try{
+  const {tokens}=f.desktop((await f.enroll()).browserToken);
+  const original=await f.licensing.status(f.auth.accessSession(tokens.access_token));
+  await f.reopen();
+  const next=generateKeyPairSync('ed25519');
+  const updated=await createLicensing({db:f.billing.db,stripe:f.stripe,privateKeyPem:next.privateKey.export({format:'pem',type:'pkcs8'}),config:{priceId:'price_licensed',keyId:'next-key',issuer:f.config.origin,audience:'omnipvd-desktop',offlineTtlSeconds:14400,recheckSeconds:900,previousPublicKeys:[{...f.keys.publicKey.export({format:'jwk'}),kid:'test-1',alg:'EdDSA',use:'sig'}]},now:()=>f.now()});
+  const {jwtVerify,createLocalJWKSet}=await import('jose');
+  const old=await jwtVerify(original.offline_authorization,createLocalJWKSet(updated.jwks),{issuer:f.config.origin,audience:'omnipvd-desktop',algorithms:['EdDSA'],currentDate:new Date(f.now())});
+  assert.equal(old.payload.sid,tokens.session_id);assert.equal(old.payload.sub,tokens.account_id);assert.equal(new Date(old.payload.exp*1000).toISOString(),original.authorization_expires_at);
+  const current=await updated.status(f.auth.accessSession(tokens.access_token));assert.equal(current.authorized,true);
+  const verified=await jwtVerify(current.offline_authorization,createLocalJWKSet(updated.jwks),{issuer:f.config.origin,audience:'omnipvd-desktop',algorithms:['EdDSA'],currentDate:new Date(f.now())});assert.equal(verified.protectedHeader.kid,'next-key');
+ }finally{await f.close()}
+});

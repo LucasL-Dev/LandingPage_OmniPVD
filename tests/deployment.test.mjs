@@ -11,10 +11,10 @@ import { validateDeployment } from '../ops/config.mjs';
 import { queueWorker } from '../ops/worker.mjs';
 import { backupDatabase } from '../scripts/backup.mjs';
 import { createLicensing } from '../licensing/service.mjs';
-const production={DEPLOY_ENV:'production',HOST:'127.0.0.1',DOMAIN:'https://account.example.invalid',AUTH_ORIGIN:'https://account.example.invalid',DOWNLOAD_ORIGIN:'https://account.example.invalid',AUTH_RP_ID:'account.example.invalid',AUTH_ALLOW_LOCALHOST:'false',AUTH_ENABLED:'true',BILLING_DB_PATH:'/var/lib/omnipdv/billing.sqlite',LICENSE_PRIVATE_KEY_PATH:'/srv/omnipdv-private/key.pem',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_PRICE_ID:'price_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture'};
+const production={DEPLOY_ENV:'production',HOST:'127.0.0.1',SITE_ORIGIN:'https://omnipdv.com.br',API_ORIGIN:'https://api.omnipdv.com.br',AUTH_ORIGIN:'https://api.omnipdv.com.br',DOWNLOAD_ORIGIN:'https://api.omnipdv.com.br',AUTH_RP_ID:'api.omnipdv.com.br',AUTH_ALLOW_LOCALHOST:'false',AUTH_ENABLED:'true',BILLING_DB_PATH:'/var/lib/omnipdv/billing.sqlite',LICENSE_PRIVATE_KEY_PATH:'/srv/omnipdv-private/key.pem',STRIPE_SECRET_KEY:'sk_test_fixture',STRIPE_PRICE_ID:'price_fixture',STRIPE_WEBHOOK_SECRET:'whsec_fixture'};
 test('production config requires exact HTTPS/RP, loopback, private paths, flags and test-only Stripe',()=>{
  assert.equal(validateDeployment(production).host,'127.0.0.1');
- for(const override of [{STRIPE_SECRET_KEY:'sk_live_NOT_REAL'},{HOST:'0.0.0.0'},{DOMAIN:'http://localhost:3000'},{AUTH_ORIGIN:'https://different.invalid'},{AUTH_RP_ID:'wrong.invalid'},{AUTH_ALLOW_LOCALHOST:'true'},{BILLING_DB_PATH:'relative.sqlite'},{MAX_CONCURRENT_DOWNLOADS:'999'},{AUTO_WELCOME_EMAIL_ENABLED:'yes'},{AUTH_ENABLED:'false'}])assert.throws(()=>validateDeployment({...production,...override}));
+ for(const override of [{STRIPE_SECRET_KEY:'sk_live_NOT_REAL'},{HOST:'0.0.0.0'},{SITE_ORIGIN:'http://localhost:4173'},{AUTH_ORIGIN:'https://different.invalid'},{AUTH_RP_ID:'wrong.invalid'},{AUTH_ALLOW_LOCALHOST:'true'},{BILLING_DB_PATH:'relative.sqlite'},{MAX_CONCURRENT_DOWNLOADS:'999'},{AUTO_WELCOME_EMAIL_ENABLED:'yes'},{AUTH_ENABLED:'false'}])assert.throws(()=>validateDeployment({...production,...override}));
  assert.throws(()=>validateDeployment({STRIPE_SECRET_KEY:'sk_live_NOT_REAL'}));
  assert.throws(()=>validateDeployment({...production,AUTO_WELCOME_EMAIL_ENABLED:'true'}));
 });

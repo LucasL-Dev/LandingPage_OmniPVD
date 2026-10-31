@@ -1,33 +1,47 @@
-# Landing page OmniPDV
+# OmniPDV — site comercial e API separados
 
-Página estática responsiva em português, com a identidade verde `#285d53` do [aplicativo oficial](https://github.com/LucasL-Dev/PDV_Sistem), temas claro/escuro, preço de R$ 79,90 e apresentação dos recursos reais.
+- **https://omnipdv.com.br**: Landing Page estática na hospedagem compartilhada Hostinger, com design verde, temas claro/escuro e captura real do aplicativo.
+- **https://api.omnipdv.com.br**: backend Node.js 24 na VPS, com Stripe de teste, Resend, SQLite persistente, autenticação/passkeys, licenciamento e download privado.
 
-## Executar e configurar pagamentos
+## Gerar a Landing Page
 
-Com Node.js 24, execute `npm ci` e `npm start`. A porta padrão é 3000 (`PORT` permite alterar). O checkout requer o servidor Node; hospedagem somente estática não executa a API.
+```sh
+npm ci
+npm run build:landing
+npm run zip:landing
+```
 
-Consulte [STRIPE_INTEGRATION_TODO.md](STRIPE_INTEGRATION_TODO.md) para todas as configurações, pendências, testes e instruções de pagamento e entrega por e-mail.
+`dist-landing/` contém somente `index.html`, `styles.css`, `app.js`, `landing-config.js`, `assets/omnipdv.png` e `assets/omnipdv-app.png`. `omnipdv-landing.zip` inclui esses seis arquivos sem uma pasta adicional na raiz. Ambos são gerados e ignorados pelo Git; não publicar o ZIP do código-fonte inteiro.
 
-Todos os CTAs de download levam à assinatura de R$ 79,90. O CTA de assinatura usa Stripe Checkout. O webhook de teste, a fila SQLite, o envio via Resend e o serviço de download privado estão implementados. O envio automático fica desligado até configurar infraestrutura e flags; consulte [billing/README.md](billing/README.md).
+[Guia de publicação no Gerenciador de Arquivos Hostinger](docs/deploy/hostinger-static.md).
 
-## Marca e captura
+## Backend e testes
 
-O símbolo `assets/omnipdv.png` vem do repositório oficial. `assets/omnipdv-app.png` é uma captura real do Electron executando o código do aplicativo em modo escuro, obtida pelo smoke test oficial em ambiente isolado, com dados de demonstração. Não é uma imagem gerada ou uma recriação da interface. O teste usa dados fictícios, sem informações de clientes reais.
+```sh
+npm run check
+npm test
+npm start
+```
 
-O tema segue a preferência do sistema no primeiro acesso, permite alternância no cabeçalho e salva a escolha no navegador. Cores e escala estão em `styles.css`.
+O backend escuta em `127.0.0.1:3000` por padrão (`HOST`/`PORT` permitem alterar). A raiz redireciona ao site comercial. Para preview do site separado: `npm run preview:landing`, após gerar o build. Configuração local entre os dois processos está no guia estático.
 
-## E-mail de boas-vindas
+[Guia definitivo para a VPS existente com Caddy](docs/DEPLOY-PRODUCTION-INTEGRATION.md). Nenhuma infraestrutura é alterada pelos scripts de build ou testes.
 
-O template responsivo e o renderer para preparar o payload do Resend estão em [emails/README.md](emails/README.md). Incluem logo inline, dados dinâmicos, versão texto e URL de download fornecida pelo backend. Nenhum envio foi habilitado por padrão.
+`SITE_ORIGIN` controla retorno Stripe e CORS estrito de Checkout; `API_ORIGIN` identifica o backend; `AUTH_ORIGIN`/`AUTH_RP_ID` controlam passkeys e issuer; `DOWNLOAD_ORIGIN` identifica o download privado. Cookies e tokens de autenticação não são usados pela landing estática. Somente o webhook verificado confirma pagamento, nunca o retorno do navegador.
 
-## Webhook, persistência e download privado
+## Componentes
 
-Antes de ativar qualquer envio, leia [as decisões de infraestrutura](billing/DECISIONS.md) e o [guia de configuração, operação e testes com Stripe CLI/Resend](billing/README.md). Requer Node.js 24, volume persistente privado e uma única instância. O instalador não está no repositório.
+- [Stripe e configurações pendentes](STRIPE_INTEGRATION_TODO.md).
+- [Billing, fila Resend e download privado](billing/README.md), com [decisões de persistência](billing/DECISIONS.md).
+- [Template de e-mail](emails/README.md), preparado no backend com logo incorporada e URL privada real.
+- [Contas, passkeys e licenciamento](licensing/README.md). O aplicativo Windows deve integrar esse protocolo; este repositório não altera o executável.
 
-## Fase A — autenticação e licenciamento
+As flags de envio, download e autenticação permanecem desligadas por padrão no exemplo. Não substituir configurações já validadas pelo `.env.example`. Não publicar segredos, bancos, chaves ou instaladores e não fazer merge/deploy automaticamente. O runtime rejeita chaves Stripe live nesta etapa.
 
-Login por passkey no navegador, autorização desktop com PKCE, sessões revogáveis e licença offline Ed25519 estão disponíveis de forma opt-in (`AUTH_ENABLED=false` por padrão). Leia [licensing/README.md](licensing/README.md) para arquitetura, vinculação verificada ao cliente Stripe, variáveis, migrações, protocolo do aplicativo e testes. O executável Windows não é alterado por este repositório.
+## Marca
 
-## VPS Ubuntu 24.04 + Node.js 24
+Identidade verde `#285d53` e logo de [PDV_Sistem](https://github.com/LucasL-Dev/PDV_Sistem). `assets/omnipdv-app.png` é captura real do aplicativo com dados fictícios. Nenhuma informação de cliente real está no pacote estático.
 
-O [guia de implantação](docs/DEPLOY-UBUNTU.md) contém os comandos completos, variáveis, systemd, Caddy HTTPS, diretórios privados, backups consistentes, atualização/rollback/restauração e rotação Ed25519. A hospedagem pode ser de produção, mas esta entrega **continua restrita à Stripe de teste**. Nenhuma VPS ou cobrança real é configurada automaticamente. Use `ops/backend.env.example` como referência privada; não versione o ambiente preenchido.
+## Operação consolidada da VPS
+
+A branch `feat/production-integration` usa `feat/ubuntu-vps-deployment` como base e integra o site estático. Mantém worker supervisionado no processo único, encerramento controlado, `/healthz`/`/readyz`, limites de conexão/download, systemd com flock, backup online SQLite e rotação de chaves públicas. Scripts adicionais: `npm run backup` e `npm run license:public -- /CAMINHO/PRIVADO/chave.pem KID` (exporta apenas a pública). Nunca gerar outra privada em uma atualização. Consulte [o roteiro manual](docs/DEPLOY-PRODUCTION-INTEGRATION.md) antes de qualquer implantação.

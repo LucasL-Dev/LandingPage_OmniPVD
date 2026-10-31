@@ -1,6 +1,7 @@
 import { loadEnvFile } from 'node:process';
 import { fileURLToPath } from 'node:url';
-import Stripe from 'stripe';
+import { testStripeClient } from '../config/stripe.mjs';
+import { deploymentOrigins } from '../config/origins.mjs';
 import { billingRuntime } from '../billing/runtime.mjs';
 import { authRuntime } from './runtime.mjs';
 import { transaction } from './common.mjs';
@@ -8,7 +9,7 @@ import { transaction } from './common.mjs';
 try { loadEnvFile(); } catch(error) { if(error.code!=='ENOENT')throw error; }
 const args=process.argv.slice(2),command=args.shift();
 const option=name=>{const index=args.indexOf(name);return index>=0?args[index+1]:null;};
-const stripe=process.env.STRIPE_SECRET_KEY?new Stripe(process.env.STRIPE_SECRET_KEY):null;
+const stripe=testStripeClient();
 const root=fileURLToPath(new URL('../',import.meta.url));
 const priceId=process.env.STRIPE_PRICE_ID || 'price_1UVCotRyOKs2Cpl0wvQXsmAi';
 const billing=billingRuntime(stripe,root,priceId);
@@ -23,7 +24,7 @@ try {
   const customer=await stripe.customers.retrieve(customerId);
   if(customer.deleted||customer.livemode!==false)throw new Error('Somente clientes existentes no modo teste são aceitos nesta fase.');
   const token=identity.auth.issueClaim(customerId,reference);
-  const url=new URL('/account/login',process.env.AUTH_ORIGIN);url.hash=new URLSearchParams({invite:token}).toString();
+  const url=new URL('/account/login',process.env.AUTH_ORIGIN || deploymentOrigins().api);url.hash=new URLSearchParams({invite:token}).toString();
   // Intentional single display to the trusted operator. Never send this to shared logs.
   console.log('Convite de uso único (30 minutos). Entregue apenas ao titular verificado, por canal seguro:');
   console.log(url.href);

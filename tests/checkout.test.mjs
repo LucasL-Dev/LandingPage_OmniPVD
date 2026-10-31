@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createApp, DEFAULT_STRIPE_PRICE_ID, DEFAULT_DOMAIN } from '../server.mjs';
 
 test('checkout: configuração, parâmetros, erros e proteção de arquivos', async () => {
+  delete process.env.SITE_ORIGIN;
   process.env.DOMAIN = 'https://omnipdv.example';
   process.env.STRIPE_PRICE_ID = 'price_test_fixture';
   let params, fail = false;
@@ -40,7 +41,8 @@ test('checkout: configuração, parâmetros, erros e proteção de arquivos', as
     assert.equal((await fetch(`${base}/api/create-checkout-session`, {method:'POST'})).status, 200);
     assert.equal(params.cancel_url, `${DEFAULT_DOMAIN}/?checkout=cancelled#assinatura`);
     for (const file of ['/.env', '/server.mjs', '/package-lock.json', '/.git/config']) assert.equal((await fetch(base+file)).status,404);
-    assert.equal((await fetch(base+'/')).status,200);
+    const home=await fetch(base+'/',{redirect:'manual'});
+    assert.equal(home.status,302);assert.equal(home.headers.get('location'),DEFAULT_DOMAIN);
   } finally { await new Promise(resolve=>server.close(resolve)); }
 });
 

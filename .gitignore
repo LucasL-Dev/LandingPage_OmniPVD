@@ -21,3 +21,7 @@ private/
 *.pfx
 *.sqlite.partial
 backups/
+
+# Generated public deployment artifacts
+dist-landing/
+omnipdv-landing.zip
