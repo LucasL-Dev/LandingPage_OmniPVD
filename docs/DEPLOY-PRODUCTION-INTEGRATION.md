@@ -229,3 +229,7 @@ A suíte integra os testes de ambas as branches e adiciona regressões para orig
 Caddyfile é validado localmente pelo parser (`caddy adapt`), sem iniciar servidor ou ACME; unidades são verificadas por `systemd-analyze verify` sobre cópias temporárias adaptadas ao ambiente de teste, sem instalar/iniciar serviços. A CI faz a mesma classe de validação. Nenhum banco/instalador real, chave privada, credencial ou e-mail real é usado. Artefatos estáticos continuam com seis arquivos públicos e sem pasta extra no ZIP.
 
 Para referências de backup criptografado, recuperação, rotação e instalação nova: [DEPLOY-UBUNTU.md](DEPLOY-UBUNTU.md). Para o site já publicado: [deploy/hostinger-static.md](deploy/hostinger-static.md).
+
+## Onboarding automático opcional
+
+A automação pós-compra está documentada em [onboarding/README.md](../onboarding/README.md). Adiciona `AUTOMATIC_ONBOARDING_ENABLED` (padrão false) e `ONBOARDING_OUTBOX_KEY_PATH` (32 bytes privados fora do checkout, chave distinta da licença). Não alterar credenciais Stripe/Resend nem regenerar Ed25519. Antes de habilitar manualmente, fazer backup, revisar a migração 002 e a fila existente; não há reenfileiramento em massa de mensagens antigas. No rollback, desligar envios/automação e manter banco e chave de outbox, sem restaurar snapshot antigo. Nenhuma dessas etapas foi executada na VPS.

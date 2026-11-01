@@ -97,3 +97,7 @@ Defina uma política de retenção e exclusão de eventos, dados comerciais, pay
 ## Hospedagem final
 
 O backend permanece exclusivamente na VPS em `https://api.omnipdv.com.br`; a landing estática fica em `https://omnipdv.com.br`. Consulte [o guia Ubuntu](../docs/deploy/ubuntu-vps.md) antes de alterar origens ou publicar. Nenhuma tabela de billing, entrega ou token é migrada/resetada por esta separação.
+
+## Integração de onboarding
+
+A extensão opcional [onboarding](../onboarding/README.md) usa o mesmo worker e acrescenta uma outbox cifrada de códigos/recuperação. Mensagens de boas-vindas novas ganham ativação, sem mudar o payload de mensagens já preparadas ou suas chaves Resend. Confirmação de pagamento continua exclusivamente no webhook verificado/consultas Stripe; posse do download não autentica uma conta. `npm run billing:status` mostra também totais da outbox nova.

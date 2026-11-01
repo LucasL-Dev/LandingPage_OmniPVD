@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { ApiError, check, hash, rateLimit, validateAuthorization } from './common.mjs';
 
-export function createAuthHandler({auth,licensing,db,config,now=()=>Date.now()}) {
+export function createAuthHandler({auth,licensing,onboarding=null,db,config,now=()=>Date.now()}) {
   const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'}).end(JSON.stringify(data));};
   const cookie=token=>`omnipvd_browser=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(config.browserTtlMs/1000)}${config.secureCookies?'; Secure':''}`;
   const browser=req=>{
@@ -62,6 +62,12 @@ export function createAuthHandler({auth,licensing,db,config,now=()=>Date.now()})
       if(req.headers.origin)check(req.headers.origin===config.origin,403,'invalid_origin');
       else check(['/api/auth/token','/api/auth/logout'].includes(pathname),403,'origin_required');
       const input=await body(req);
+      if(pathname.startsWith('/api/auth/onboarding/')) {
+        check(onboarding,503,'onboarding_unavailable');
+        rateLimit(db,`onboarding-ip:${req.socket.remoteAddress}`,10,now());
+        const actions={'/api/auth/onboarding/start':onboarding.start,'/api/auth/onboarding/verify':onboarding.verify,'/api/auth/onboarding/recover/start':onboarding.recoveryStart,'/api/auth/onboarding/recover/verify':onboarding.recoveryVerify};
+        check(actions[pathname],404,'not_found');json(res,200,await actions[pathname](input));return true;
+      }
       if(pathname==='/api/auth/token') {
         rateLimit(db,`token:${req.socket.remoteAddress}`,30,now());
         json(res,200,auth.exchange(input));return true;
@@ -92,7 +98,7 @@ export function createAuthHandler({auth,licensing,db,config,now=()=>Date.now()})
         auth.revoke(session);json(res,200,{ok:true});return true;
       }
       const session=browser(req);csrf(req,session);rateLimit(db,`account:${session.account_id}`,30,now());
-      if(pathname==='/api/account/claim'){auth.requireRecent(session);auth.linkClaim(session.account_id,input.claimToken);json(res,200,{ok:true});return true;}
+      if(pathname==='/api/account/claim'){auth.requireRecent(session);auth.linkClaim(session.account_id,input.claimToken,input.emailProof);json(res,200,{ok:true});return true;}
       if(pathname==='/api/auth/authorize'){json(res,200,auth.authorize(session,input));return true;}
       if(pathname==='/api/auth/sessions/revoke'){check(typeof input.session_id==='string');auth.revoke(session,input.session_id);json(res,200,{ok:true});return true;}
       throw new ApiError(404,'not_found');

@@ -6,7 +6,7 @@ export function validateDeployment(env=process.env) {
   // Hosting in production does not enable live Stripe billing.
   if(env.STRIPE_SECRET_KEY && !/^(sk|rk)_test_/.test(env.STRIPE_SECRET_KEY))throw Error('Somente chave Stripe de teste é permitida nesta entrega.');
   deploymentOrigins(env);
-  const flags=['AUTH_ENABLED','AUTH_ALLOW_LOCALHOST','AUTO_WELCOME_EMAIL_ENABLED','PRIVATE_DOWNLOAD_ENABLED'];
+  const flags=['AUTH_ENABLED','AUTH_ALLOW_LOCALHOST','AUTO_WELCOME_EMAIL_ENABLED','PRIVATE_DOWNLOAD_ENABLED','AUTOMATIC_ONBOARDING_ENABLED'];
   for(const flag of flags)if(env[flag] && !['true','false'].includes(env[flag]))throw Error(`Flag inválida: ${flag}`);
   const integer=(key,fallback,min,max)=>{const value=Number(env[key]||fallback);if(!Number.isSafeInteger(value)||value<min||value>max)throw Error(`Limite inválido: ${key}`);return value;};
   const port=integer('PORT',3000,1024,65535),maxDownloads=integer('MAX_CONCURRENT_DOWNLOADS',4,1,32),maxInstallerBytes=integer('MAX_INSTALLER_BYTES',2147483648,1,8589934592);
@@ -25,5 +25,6 @@ export function validateDeployment(env=process.env) {
   }
   if(env.AUTO_WELCOME_EMAIL_ENABLED==='true' && (!env.RESEND_API_KEY||!env.RESEND_FROM||!env.SUPPORT_EMAIL||env.PRIVATE_DOWNLOAD_ENABLED!=='true'))throw Error('Worker Resend exige remetente, suporte, API e download privado configurados.');
   if(env.PRIVATE_DOWNLOAD_ENABLED==='true' && (!env.PRIVATE_INSTALLER_PATH||!path.isAbsolute(env.PRIVATE_INSTALLER_PATH)))throw Error('Instalador privado exige caminho absoluto.');
+  if(env.AUTOMATIC_ONBOARDING_ENABLED==='true' && (env.AUTH_ENABLED!=='true' || env.AUTO_WELCOME_EMAIL_ENABLED!=='true' || env.PRIVATE_DOWNLOAD_ENABLED!=='true' || !env.ONBOARDING_OUTBOX_KEY_PATH || !path.isAbsolute(env.ONBOARDING_OUTBOX_KEY_PATH)))throw Error('Onboarding automático exige autenticação, e-mail, download privado e chave própria da outbox.');
   return {stage,host:env.HOST||'127.0.0.1',port,maxDownloads,maxInstallerBytes,queueInterval};
 }

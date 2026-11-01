@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash, generateKeyPairSync, randomBytes, sign, createPublicKey } from 'node:crypto';
-import { isoCBOR } from '@simplewebauthn/server/helpers';
+import { authenticator } from './helpers/webauthn.mjs';
 import { createBilling } from '../billing/service.mjs';
 import { createAuth } from '../auth/service.mjs';
 import { createLicensing, verifyOfflineLicense } from '../licensing/service.mjs';
@@ -15,28 +15,7 @@ import { hash } from '../auth/common.mjs';
 
 const root=fileURLToPath(new URL('../',import.meta.url));
 const b64=data=>Buffer.from(data).toString('base64url');
-const sha=data=>createHash('sha256').update(data).digest();
 const list=items=>({async *[Symbol.asyncIterator](){yield* items;}});
-function authenticator() {
- const keys=generateKeyPairSync('ec',{namedCurve:'prime256v1'}),jwk=keys.publicKey.export({format:'jwk'}),credentialId=randomBytes(32);let counter=0;
- const cose=isoCBOR.encode(new Map([[1,2],[3,-7],[-1,1],[-2,new Uint8Array(Buffer.from(jwk.x,'base64url'))],[-3,new Uint8Array(Buffer.from(jwk.y,'base64url'))]]));
- let handle;
- return {
-  register(options,origin) {
-   handle=options.user.id;
-   const client=Buffer.from(JSON.stringify({type:'webauthn.create',challenge:options.challenge,origin,crossOrigin:false}));
-   const length=Buffer.alloc(2);length.writeUInt16BE(credentialId.length);
-   const authData=Buffer.concat([sha(options.rp.id),Buffer.from([0x45]),Buffer.alloc(4),Buffer.alloc(16),length,credentialId,cose]);
-   return {id:b64(credentialId),rawId:b64(credentialId),type:'public-key',authenticatorAttachment:'platform',clientExtensionResults:{},response:{clientDataJSON:b64(client),attestationObject:b64(isoCBOR.encode(new Map([['fmt','none'],['authData',new Uint8Array(authData)],['attStmt',new Map()]]))),transports:['internal']}};
-  },
-  login(options,origin) {
-   const client=Buffer.from(JSON.stringify({type:'webauthn.get',challenge:options.challenge,origin,crossOrigin:false}));
-   const count=Buffer.alloc(4);count.writeUInt32BE(++counter);
-   const authData=Buffer.concat([sha(options.rpId),Buffer.from([0x05]),count]);
-   return {id:b64(credentialId),rawId:b64(credentialId),type:'public-key',authenticatorAttachment:'platform',clientExtensionResults:{},response:{clientDataJSON:b64(client),authenticatorData:b64(authData),signature:b64(sign('sha256',Buffer.concat([authData,sha(client)]),keys.privateKey)),userHandle:handle}};
-  },
- };
-}
 async function fixture(beforeAuth=()=>{}) {
  const dir=await mkdtemp(path.join(tmpdir(),'omnipvd-license-'));let clock=Date.now(),unavailable=false;
  const initial={id:'in_initial',customer:'cus_1',subscription:'sub_1',billing_reason:'subscription_create',status:'paid',paid:true,lines:{has_more:false,data:[{price:{id:'price_licensed'},subscription:'sub_1',period:{start:Math.floor(clock/1000)-60,end:Math.floor(clock/1000)+86400*30}}]}};
@@ -191,7 +170,7 @@ test('migração aditiva preserva eventos, entregas e tokens existentes, e reapl
   assert.equal(f.billing.db.prepare('SELECT resend_id FROM deliveries WHERE subscription_id=?').get('existing_sub').resend_id,'existing_delivery');
   assert.equal(f.billing.db.prepare('SELECT token_hash FROM downloads').get().token_hash,'existing_token_hash');
   assert.equal(f.auth.accessSession(tokens.access_token).account_id,tokens.account_id);
-  assert.equal(f.billing.db.prepare('SELECT count(*) n FROM auth_schema_migrations').get().n,1);
+  assert.equal(f.billing.db.prepare('SELECT count(*) n FROM auth_schema_migrations').get().n,2);
  }finally{await f.close()}
 });
 
