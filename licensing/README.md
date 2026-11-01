@@ -163,3 +163,7 @@ Antes de ativar na hospedagem: backup consistente, domínio estável com HTTPS, 
 ## Site comercial separado
 
 O login, cookies, JWKS e rotas de licença permanecem na origem da API, não na landing. Não há CORS de autenticação para o site comercial. Leia o [guia Ubuntu](../docs/deploy/ubuntu-vps.md) antes de trocar `AUTH_ORIGIN` ou RP ID: passkeys, cookies e confiança do issuer não migram automaticamente entre domínios. As credenciais existentes não são reescritas nem removidas pelo código.
+
+## Cadastro pós-compra opcional
+
+Além dos convites administrativos, o onboarding pode emitir convites automáticos após pagamento inicial confirmado. Esses convites ficam em tabelas separadas e exigem uma prova curta de controle do e-mail antes da passkey. Não usar e-mail, retorno de Checkout ou download como credencial. Consulte [onboarding/README.md](../onboarding/README.md) para variáveis, migração, recuperação e rollback. Chaves, issuer, audience e protocolo desktop da licença permanecem os existentes.

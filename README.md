@@ -45,3 +45,7 @@ Identidade verde `#285d53` e logo de [PDV_Sistem](https://github.com/LucasL-Dev/
 ## Operação consolidada da VPS
 
 A branch `feat/production-integration` usa `feat/ubuntu-vps-deployment` como base e integra o site estático. Mantém worker supervisionado no processo único, encerramento controlado, `/healthz`/`/readyz`, limites de conexão/download, systemd com flock, backup online SQLite e rotação de chaves públicas. Scripts adicionais: `npm run backup` e `npm run license:public -- /CAMINHO/PRIVADO/chave.pem KID` (exporta apenas a pública). Nunca gerar outra privada em uma atualização. Consulte [o roteiro manual](docs/DEPLOY-PRODUCTION-INTEGRATION.md) antes de qualquer implantação.
+
+## Cadastro automático pós-compra
+
+A branch de onboarding acrescenta convite após pagamento inicial confirmado, código separado para o e-mail congelado da compra e cadastro com passkey. Contas existentes e suporte administrativo são preservados. O recurso é opt-in (`AUTOMATIC_ONBOARDING_ENABLED=false`), usa a mesma fila/worker e requer uma chave exclusiva de criptografia da outbox fora do checkout. Veja [onboarding/README.md](onboarding/README.md) para fluxo, variáveis, migração 002, rollback e testes. Nenhum deploy ou envio real é automático nesta entrega.

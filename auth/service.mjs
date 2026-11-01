@@ -2,13 +2,13 @@ import * as WebAuthn from '@simplewebauthn/server';
 import { migrateLicensing } from '../db/migrate.mjs';
 import { ApiError, check, hash, matches, secret, transaction, uuid, validateAuthorization } from './common.mjs';
 
-export function createAuth({ db, config, now = () => Date.now(), webauthn = WebAuthn }) {
+export function createAuth({ db, config, now = () => Date.now(), webauthn = WebAuthn, onboarding = null }) {
   migrateLicensing(db);
   const audit = (action, account, resource) => db.prepare('INSERT INTO auth_audit(action,account_id,resource_id,created_at) VALUES(?,?,?,?)').run(action, account || null, resource || null, now());
   const activeAccount = account => check(db.prepare("SELECT 1 FROM auth_accounts WHERE id=? AND status='active'").get(account), 401, 'invalid_session');
-  const claim = token => {
+  const claim = (token,emailProof,accountId=null) => {
     check(typeof token === 'string' && token.length <= 100, 400, 'invalid_claim');
-    const row = db.prepare('SELECT * FROM auth_claims WHERE token_hash=?').get(hash(token));
+    const row = db.prepare('SELECT * FROM auth_claims WHERE token_hash=?').get(hash(token)) || onboarding?.claim(token,emailProof,accountId);
     check(row && !row.used_at && row.expires_at > now(), 400, 'invalid_claim');
     check(!db.prepare('SELECT 1 FROM auth_stripe_links WHERE customer_id=? AND stripe_mode=?').get(row.customer_id,row.stripe_mode),409,'customer_already_linked');
     return row;
@@ -21,10 +21,11 @@ export function createAuth({ db, config, now = () => Date.now(), webauthn = WebA
     audit('claim_issued',null,customerId);
     return token;
   }
-  function linkClaim(account, token) {
+  function linkClaim(account, token, emailProof) {
     activeAccount(account);
     return transaction(db, () => {
-      const row = claim(token);
+      const row = claim(token,emailProof,account);
+      if(row.automatic)onboarding.consumeClaim(token,emailProof,account);
       db.prepare('INSERT INTO auth_stripe_links VALUES(?,?,?,?)').run(row.customer_id,row.stripe_mode,account,now());
       db.prepare('UPDATE auth_claims SET used_at=? WHERE token_hash=?').run(now(),row.token_hash);
       audit('customer_linked',account,row.customer_id);
@@ -85,7 +86,7 @@ export function createAuth({ db, config, now = () => Date.now(), webauthn = WebA
   };
   const verifyCsrf = (session, value) => check(matches(value,db.prepare('SELECT csrf_hash FROM auth_sessions WHERE id=?').get(session.id)?.csrf_hash),403,'invalid_csrf');
   async function registrationOptions(input, session = null) {
-    if (session) requireRecent(session); else claim(input.claimToken);
+    if (session) requireRecent(session); else claim(input.claimToken,input.emailProof);
     const accountId = session?.account_id || uuid();
     const displayName = session ? db.prepare('SELECT display_name FROM auth_accounts WHERE id=?').get(accountId).display_name : String(input.displayName || '').trim().slice(0,80);
     check(displayName.length > 0 && !/[\x00-\x1f]/.test(displayName));
@@ -95,13 +96,13 @@ export function createAuth({ db, config, now = () => Date.now(), webauthn = WebA
       attestationType:'none',supportedAlgorithmIDs:[-7,-257],authenticatorSelection:{residentKey:'required',userVerification:'required'},
       excludeCredentials:credentials.map(c=>({id:c.id,transports:JSON.parse(c.transports)})),
     });
-    const flowToken = challenge('register',options.challenge,{accountId,displayName,claimTokenHash:session ? null : hash(input.claimToken),existingAccount:!!session,sessionId:session?.id || null});
+    const flowToken = challenge('register',options.challenge,{accountId,displayName,claimTokenHash:session ? null : hash(input.claimToken),emailProofHash:input.emailProof?hash(input.emailProof):null,existingAccount:!!session,sessionId:session?.id || null});
     return { options, flowToken };
   }
   async function registrationVerify(input, session = null) {
     const flow = takeChallenge(input.flowToken,'register');
     if (flow.data.existingAccount) { check(session && session.id === flow.data.sessionId && session.account_id === flow.data.accountId,401,'invalid_session'); requireRecent(session); }
-    else check(matches(input.claimToken,flow.data.claimTokenHash),400,'invalid_claim');
+    else { check(matches(input.claimToken,flow.data.claimTokenHash),400,'invalid_claim'); if(flow.data.emailProofHash)check(matches(input.emailProof,flow.data.emailProofHash),403,'email_verification_required'); }
     let result;
     try { result = await webauthn.verifyRegistrationResponse({response:input.response,expectedChallenge:flow.challenge,expectedOrigin:config.origin,expectedRPID:config.rpId,requireUserVerification:true}); }
     catch { throw new ApiError(400,'passkey_verification_failed'); }
@@ -109,8 +110,9 @@ export function createAuth({ db, config, now = () => Date.now(), webauthn = WebA
     const credential = result.registrationInfo.credential;
     return transaction(db, () => {
       if (!flow.data.existingAccount) {
-        const row = claim(input.claimToken);
+        const row = claim(input.claimToken,input.emailProof);
         db.prepare('INSERT INTO auth_accounts VALUES(?,?,?,?)').run(flow.data.accountId,flow.data.displayName,'active',now());
+        if(row.automatic)onboarding.consumeClaim(input.claimToken,input.emailProof,flow.data.accountId);
         db.prepare('INSERT INTO auth_stripe_links VALUES(?,?,?,?)').run(row.customer_id,row.stripe_mode,flow.data.accountId,now());
         db.prepare('UPDATE auth_claims SET used_at=? WHERE token_hash=?').run(now(),row.token_hash);
         audit('customer_linked',flow.data.accountId,row.customer_id);

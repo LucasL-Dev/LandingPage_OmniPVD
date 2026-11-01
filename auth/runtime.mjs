@@ -4,6 +4,8 @@ import { createAuth } from './service.mjs';
 import { createAuthHandler } from './http.mjs';
 import { createLicensing } from '../licensing/service.mjs';
 import { deploymentOrigins } from '../config/origins.mjs';
+import { createOnboarding } from '../onboarding/service.mjs';
+import { migrateLicensing } from '../db/migrate.mjs';
 
 function seconds(name,fallback,min,max) {
   const value=process.env[name]===undefined||process.env[name]===''?fallback:Number(process.env[name]);
@@ -35,8 +37,16 @@ export async function authRuntime({stripe,billing,projectRoot,priceId}) {
     browserTtlMs:seconds('AUTH_BROWSER_TTL_SECONDS',43_200,300,86_400)*1000,
     sessionTtlMs:seconds('AUTH_SESSION_TTL_SECONDS',2_592_000,3600,2_592_000)*1000,
     accessTtlMs:seconds('AUTH_ACCESS_TTL_SECONDS',600,60,900)*1000};
-  const auth=createAuth({db:billing.db,config});
+  migrateLicensing(billing.db);
+  let onboarding=null;
+  if(process.env.AUTOMATIC_ONBOARDING_ENABLED==='true') {
+    const keyPath=await realpath(process.env.ONBOARDING_OUTBOX_KEY_PATH);
+    if(keyPath===root || keyPath.startsWith(root+path.sep) || keyPath===filename)throw Error('Chave de outbox deve ser privada, fora do checkout e diferente da chave de licença.');
+    onboarding=createOnboarding({db:billing.db,stripe,delivery:billing.onboardingDelivery,config:{origin:configuredOrigin,priceId,from:billing.onboardingDelivery.from,supportEmail:billing.onboardingDelivery.supportEmail},key:await readFile(keyPath)});
+    billing.attachOnboarding(onboarding);
+  }
+  const auth=createAuth({db:billing.db,config,onboarding});
   const licensing=await createLicensing({db:billing.db,stripe,privateKeyPem:await readFile(filename,'utf8'),
     config:{priceId,keyId,previousPublicKeys,issuer:originUrl.origin,audience:'omnipvd-desktop',offlineTtlSeconds:seconds('LICENSE_OFFLINE_TTL_SECONDS',14_400,60,14_400),recheckSeconds:seconds('LICENSE_RECHECK_SECONDS',900,30,3600)}});
-  return {auth,licensing,handle:createAuthHandler({auth,licensing,db:billing.db,config})};
+  return {auth,licensing,onboarding,handle:createAuthHandler({auth,licensing,onboarding,db:billing.db,config})};
 }

@@ -25,3 +25,10 @@ test('e-mail não permite acesso ausente, inseguro ou dados inválidos', async (
   await assert.rejects(buildWelcomeEmail({ ...fixture, customerName: '' }));
   await assert.rejects(buildWelcomeEmail({ ...fixture, supportEmail: 'suporte" onclick="alert(1)' }));
 });
+
+test('boas-vindas inclui ativação segura somente quando URL HTTPS real é fornecida pelo backend',async()=>{
+ const email=await buildWelcomeEmail({...fixture,activationUrl:'https://api.example.invalid/account/login#invite=test-only',activationMode:'register'});
+ assert.ok(email.html.includes('Ativar minha conta'));assert.ok(email.text.includes('confirme o código'));assert.ok(!email.html.includes('{{'));
+ const existing=await buildWelcomeEmail({...fixture,activationUrl:'https://api.example.invalid/account/login',activationMode:'login'});assert.ok(existing.html.includes('Acessar minha conta'));assert.ok(!existing.html.includes('Ativar minha conta'));
+ await assert.rejects(buildWelcomeEmail({...fixture,activationUrl:'javascript:alert(1)'}));
+});

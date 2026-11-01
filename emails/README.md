@@ -53,3 +53,7 @@ Não grave URLs assinadas em logs públicos. Configure a política de rastreamen
 ## Verificação
 
 Execute `node --test tests/email.test.mjs`. Os testes renderizam em memória com URL de teste explicitamente não funcional e verificam escape, validação e logo inline. Nenhum e-mail é enviado. O HTML pode ser aberto localmente para conferir a estrutura, mas a logo CID só aparece quando incorporada ao e-mail ou substituída num preview local. Compatibilidade visual final deve ser validada em Gmail, Outlook e Apple Mail; os testes não simulam todos os clientes.
+
+## Convite no e-mail de boas-vindas
+
+`buildWelcomeEmail()` aceita opcionalmente `activationUrl` HTTPS e `activationMode` (`register` ou `login`), exclusivamente preenchidos pelo backend. Sem esses campos, o template permanece compatível com as entregas anteriores. Com onboarding habilitado, o e-mail inclui download privado e ativação; o convite não é suficiente sem código separado para comprovar o e-mail e uma passkey válida. Veja [onboarding/README.md](../onboarding/README.md). Nenhuma URL fictícia é usada como download.

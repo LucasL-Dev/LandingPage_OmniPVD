@@ -75,6 +75,16 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new Error('DOWNLOAD_ORIGIN deve ser uma origem HTTPS.');
     return filename;
   }
+  async function createOnboardingDownload(customerId,subscriptionId) {
+    await installerPath();
+    const state=await snapshot(subscriptionId);
+    if(!allowed(state.record) || state.record.customer_id!==customerId)return null;
+    const token=randomBytes(32).toString('base64url');
+    const url=new URL('/api/download',config.downloadOrigin);url.searchParams.set('token',token);
+    db.prepare('INSERT INTO downloads VALUES(?,?,?,?)').run(hash(token),subscriptionId,customerId,now()+48*3600_000);
+    return url.href;
+  }
+  let onboarding=null;
   async function preparePayload(job, state) {
     const invoice = await stripe.invoices.retrieve(job.invoice_id);
     if (invoice.status !== 'paid' || invoice.paid === false || invoice.billing_reason !== 'subscription_create' || subscriptionId(invoice) !== job.subscription_id || id(invoice.customer) !== job.customer_id) throw new Error('Fatura inicial não autorizada.');
@@ -88,6 +98,7 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     const expires = now() + 48 * 60 * 60 * 1000;
     const downloadUrl = new URL('/api/download', config.downloadOrigin);
     downloadUrl.searchParams.set('token', token);
+    const activation = onboarding ? await onboarding.welcome(job,state,invoice) : null;
     const content = await buildWelcomeEmail({
       customerName: customer.name || 'Cliente OmniPVD',
       planName: price.product?.name || 'OmniPVD',
@@ -95,12 +106,13 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
       billingPeriod: `${recurring.interval_count} ${units[recurring.interval]}`,
       purchaseDate: new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date((invoice.status_transitions?.paid_at || invoice.created) * 1000)),
       downloadUrl: downloadUrl.href, supportEmail: config.supportEmail,
+      activationUrl:activation?.activationUrl, activationMode:activation?.activationMode,
     });
-    const payload = { from: config.from, to: customer.email, replyTo: config.supportEmail, ...content };
+    const payload = { from: config.from, to: activation?.to || customer.email, replyTo: config.supportEmail, ...content };
     db.exec('BEGIN IMMEDIATE');
     try {
       db.prepare('INSERT INTO downloads VALUES(?,?,?,?)').run(hash(token), job.subscription_id, job.customer_id, expires);
-      db.prepare('UPDATE deliveries SET payload=? WHERE subscription_id=?').run(JSON.stringify(payload), job.subscription_id);
+      db.prepare('UPDATE deliveries SET payload=? WHERE subscription_id=?').run(onboarding ? onboarding.sealWelcome(payload,job.subscription_id) : JSON.stringify(payload), job.subscription_id);
       db.exec('COMMIT');
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     return payload;
@@ -111,6 +123,7 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
     busy = true;
     try {
       await installerPath(); // Nunca criar payload ou enviar com instalador indisponível.
+      if(onboarding)await onboarding.runQueue(()=>stopping);
       const jobs = db.prepare("SELECT * FROM deliveries WHERE status IN ('pending','retry','sending') AND next_at<=? AND lease_until<=? LIMIT 20").all(now(), now());
       for (const job of jobs) {
         if (stopping) break;
@@ -125,7 +138,8 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
           if (!allowed(state.record) || state.record.customer_id !== job.customer_id) {
             db.prepare("UPDATE deliveries SET status='retry',next_at=?,lease_until=0,last_error='subscription_not_authorized' WHERE subscription_id=?").run(now() + 60 * 1000, job.subscription_id); continue;
           }
-          const payload = job.payload ? JSON.parse(job.payload) : await preparePayload(job, state);
+          const payload = job.payload ? (job.payload.startsWith('onboarding1.') ? onboarding?.openWelcome(job.payload,job.subscription_id) : JSON.parse(job.payload)) : await preparePayload(job, state);
+          if(!payload)throw Error('onboarding_unavailable');
           db.prepare('UPDATE deliveries SET attempts=attempts+1,first_at=COALESCE(first_at,?) WHERE subscription_id=?').run(now(), job.subscription_id);
           const result = await resend.emails.send(payload, { idempotencyKey: `omnipvd-welcome-${job.subscription_id}`, signal: AbortSignal.timeout(30_000) });
           if (result.error || !result.data?.id) {
@@ -164,5 +178,5 @@ export function createBilling({ stripe, resend, config, now = () => Date.now() }
       stream.pipe(res);
     } catch { if (!res.headersSent) res.writeHead(503).end('Download temporariamente indisponível.'); else res.destroy(); }
   }
-  return { receive, runQueue, stopQueue:()=>{stopping=true;}, download, close: () => db.close(), db };
+  return { attachOnboarding:service=>{onboarding=service;}, onboardingDelivery:{createDownload:createOnboardingDownload,ready:async()=>!!(config.emailEnabled && resend && config.from && config.supportEmail && await installerPath()),send:(payload,options)=>resend.emails.send(payload,options),from:config.from,supportEmail:config.supportEmail}, receive, runQueue, stopQueue:()=>{stopping=true;}, download, close: () => db.close(), db };
 }
