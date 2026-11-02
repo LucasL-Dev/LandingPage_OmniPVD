@@ -9,11 +9,11 @@ const currentInvite=()=>byId('signed-in').hidden?byId('claim-token').value.trim(
 const proofFor=token=>token===verifiedInvite?emailProof:undefined;
 const refreshProofUI=()=>{byId('proof-panel').hidden=!currentInvite();};
 const message=text=>{byId('message').textContent=text;};
-const labels={email_verification_required:'Confirme primeiro o código enviado ao e-mail da compra.',invalid_invite:'Convite automático inválido, expirado ou já utilizado. Use a recuperação ou, se for um convite administrativo, siga o cadastro indicado pelo suporte.',invalid_verification:'Código inválido, expirado ou já utilizado. Solicite um novo código.',existing_account_login_required:'Este e-mail já tem uma conta. Entre com sua passkey e depois vincule a compra; não criaremos uma conta duplicada.',onboarding_unavailable:'Ativação automática temporariamente indisponível. Tente novamente ou fale com o suporte.',reauth_required:'Por segurança, saia e entre novamente com sua passkey antes de adicionar uma credencial ou vincular uma compra.',rate_limited:'Muitas tentativas. Aguarde um minuto.',invalid_claim:'Convite inválido, expirado ou já utilizado.',customer_already_linked:'Esta compra já está vinculada. Entre na conta existente.',invalid_session:'Entre novamente para continuar.',invalid_origin:'Origem de acesso inválida.',invalid_challenge:'A tentativa expirou. Inicie novamente.',license_unavailable:'Serviço temporariamente indisponível.'};
+const labels={email_verification_required:'Confirme primeiro o código enviado ao e-mail da compra.',invalid_invite:'Convite automático inválido, expirado ou já utilizado. Use a recuperação ou, se for um convite administrativo, siga o cadastro indicado pelo suporte.',invalid_verification:'Código inválido, expirado ou já utilizado. Solicite um novo código.',existing_account_login_required:'Este e-mail já tem uma conta. Entre com sua passkey e depois vincule a compra; não criaremos uma conta duplicada.',onboarding_unavailable:'Ativação automática temporariamente indisponível. Tente novamente ou fale com o suporte.',reauth_required:'Por segurança, saia e entre novamente antes de adicionar uma credencial ou vincular uma compra.',rate_limited:'Muitas tentativas. Aguarde um minuto.',invalid_claim:'Convite inválido, expirado ou já utilizado.',customer_already_linked:'Esta compra já está vinculada. Entre na conta existente.',invalid_session:'Entre novamente para continuar.',invalid_origin:'Origem de acesso inválida.',invalid_challenge:'A tentativa expirou. Inicie novamente.',license_unavailable:'Serviço temporariamente indisponível.'};
 async function api(path,input){
  const response=await fetch(path,{method:input===undefined?'GET':'POST',credentials:'same-origin',headers:input===undefined?{}:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:input===undefined?undefined:JSON.stringify(input)});
  const data=await response.json();
- if(!response.ok)throw new Error(labels[data.error]||'Não foi possível concluir. Tente novamente ou procure o suporte.');
+ if(!response.ok){const error=new Error(labels[data.error]||'Não foi possível concluir. Tente novamente ou procure o suporte.');error.code=data.error;throw error;}
  return data;
 }
 async function busy(button,fn){button.disabled=true;try{await fn();}catch(error){message(error.name==='NotAllowedError'?'Operação cancelada ou passkey indisponível. Tente novamente.':error.message);}finally{button.disabled=false;}}
@@ -75,3 +75,30 @@ byId('recover-verify').addEventListener('click',()=>busy(byId('recover-verify'),
 
 for(const input of [byId('claim-token'),byId('link-token')])input.addEventListener('input',()=>{emailProof='';verifiedInvite='';byId('proof-state').textContent='';refreshProofUI();});
 refreshProofUI();
+
+// Codes and request identifiers stay in memory. The server binds each flow to an
+// HttpOnly cookie, so a code cannot be submitted from an unrelated login flow.
+const otpFlows={};
+for(const enroll of [false,true]) {
+ const prefix=enroll?'otp-enroll':'otp',route='/api/auth/email-otp'+(enroll?'/enroll':'');
+ byId(prefix+'-send').addEventListener('click',()=>busy(byId(prefix+'-send'),async()=>{
+  const email=byId(prefix+'-email').value.trim();
+  let flow=otpFlows[prefix];
+  if(!flow || flow.email!==email || flow.delivered) {
+   const bytes=crypto.getRandomValues(new Uint8Array(32));
+   flow={email,requestKey:btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','')};otpFlows[prefix]=flow;
+  }
+  let result;try{result=await api(route+'/request',{email,requestKey:flow.requestKey});}catch(error){if(error.code==='invalid_request')delete otpFlows[prefix];throw error;}
+  flow.requestId=result.requestId;flow.delivered=true;
+  message('Se houver um acesso elegível, enviaremos o código ao e-mail da compra. Não compartilhe o código. Para solicitar outro, use o botão novamente após concluir esta tentativa.');
+ }));
+ byId(prefix+'-verify').addEventListener('click',()=>busy(byId(prefix+'-verify'),async()=>{
+  const flow=otpFlows[prefix];if(!flow?.requestId)throw new Error('Solicite primeiro um código.');
+  await api(route+'/verify',{requestId:flow.requestId,code:byId(prefix+'-code').value.trim()});
+   delete otpFlows[prefix];byId(prefix+'-code').value='';await bootstrap();
+   message(enroll?'Login por e-mail habilitado nesta conta.':'Conta autenticada. Confirme a autorização do aplicativo se você iniciou o acesso no Windows.');
+ }));
+}
+api('/api/auth/config').then(config=>{
+ byId('otp-login').hidden=!config.email_otp_enabled;byId('otp-enroll').hidden=!config.email_otp_enabled;
+}).catch(()=>{});

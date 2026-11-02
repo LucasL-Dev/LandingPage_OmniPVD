@@ -120,3 +120,7 @@ Foi validado também no Chromium com passkey virtual e TLS local de teste: link,
 - Mudança do e-mail original da fatura, endereço ausente ou recurso Stripe inconsistente exige verificação administrativa, sem redirecionamento automático para outra pessoa.
 - Um link/código roubado não é proteção contra comprometimento completo da caixa postal; proteger a conta de e-mail é pré-requisito do primeiro vínculo.
 - O desktop precisa implementar o protocolo de login/licença já documentado. Esta branch não altera o Electron, não cria atualização automática nem concede uma licença fora da política existente.
+
+## Login opcional por e-mail e código
+
+A modalidade `EMAIL_OTP_AUTH_ENABLED=false` adiciona OTP de seis dígitos sem exigir passkey de novos compradores. Contas antigas exigem adesão autenticada explícita; passkeys e sessões atuais permanecem válidas. Consulte [configuração, política de migração e rollback](../auth/EMAIL-OTP.md) e o contrato Windows indicado no guia. Esta seção complementa o fluxo original acima; não implica habilitação ou deploy.

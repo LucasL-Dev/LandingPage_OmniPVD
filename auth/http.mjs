@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { ApiError, check, hash, rateLimit, validateAuthorization } from './common.mjs';
+import { ApiError, check, hash, secret, rateLimit, validateAuthorization } from './common.mjs';
 
-export function createAuthHandler({auth,licensing,onboarding=null,db,config,now=()=>Date.now()}) {
+export function createAuthHandler({auth,licensing,onboarding=null,emailOtp=null,db,config,now=()=>Date.now()}) {
   const json=(res,status,data)=>{res.writeHead(status,{'Content-Type':'application/json; charset=utf-8'}).end(JSON.stringify(data));};
   const cookie=token=>`omnipvd_browser=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(config.browserTtlMs/1000)}${config.secureCookies?'; Secure':''}`;
   const browser=req=>{
@@ -49,6 +49,7 @@ export function createAuthHandler({auth,licensing,onboarding=null,db,config,now=
         for(const [key,value]of Object.entries(params))redirect.searchParams.set(key,value);
         res.writeHead(302,{Location:redirect.href}).end();return true;
       }
+      if(pathname==='/api/auth/config' && req.method==='GET'){json(res,200,{email_otp_enabled:!!emailOtp});return true;}
       if(pathname==='/api/auth/session' && req.method==='GET') {
         const session=browser(req);
         json(res,200,{display_name:db.prepare('SELECT display_name FROM auth_accounts WHERE id=?').get(session.account_id).display_name,csrf_token:auth.csrf(session)});return true;
@@ -62,6 +63,28 @@ export function createAuthHandler({auth,licensing,onboarding=null,db,config,now=
       if(req.headers.origin)check(req.headers.origin===config.origin,403,'invalid_origin');
       else check(['/api/auth/token','/api/auth/logout'].includes(pathname),403,'origin_required');
       const input=await body(req);
+      if(pathname.startsWith('/api/auth/email-otp/')) {
+        check(emailOtp,503,'email_otp_unavailable');
+        rateLimit(db,`email-otp-ip:${req.socket.remoteAddress}`,10,now());
+        rateLimit(db,`email-otp-hour:${req.socket.remoteAddress}`,60,now(),3600_000);
+        const actions={
+          '/api/auth/email-otp/request':['start',false],'/api/auth/email-otp/verify':['verify',false],
+          '/api/auth/email-otp/enroll/request':['start',true],'/api/auth/email-otp/enroll/verify':['verify',true],
+        };
+        const action=actions[pathname];check(action,404,'not_found');
+        const session=action[1]?browser(req):null;if(session){csrf(req,session);auth.requireRecent(session);}
+        let binding=(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith('omnipdv_otp='))?.slice('omnipdv_otp='.length);
+        if(action[0]==='start') {
+          if(!/^[A-Za-z0-9_-]{43}$/.test(binding||''))binding=secret();
+          res.setHeader('Set-Cookie',`omnipdv_otp=${binding}; Path=/api/auth/email-otp; HttpOnly; SameSite=Strict; Max-Age=600${config.secureCookies?'; Secure':''}`);
+          json(res,200,await emailOtp.start(input,binding,session));
+        } else {
+          const result=await emailOtp.verify(input,binding,session);
+          res.setHeader('Set-Cookie',[cookie(result.browserToken),`omnipdv_otp=; Path=/api/auth/email-otp; HttpOnly; SameSite=Strict; Max-Age=0${config.secureCookies?'; Secure':''}`]);
+          json(res,200,{ok:true});
+        }
+        return true;
+      }
       if(pathname.startsWith('/api/auth/onboarding/')) {
         check(onboarding,503,'onboarding_unavailable');
         rateLimit(db,`onboarding-ip:${req.socket.remoteAddress}`,10,now());

@@ -170,7 +170,7 @@ test('migração aditiva preserva eventos, entregas e tokens existentes, e reapl
   assert.equal(f.billing.db.prepare('SELECT resend_id FROM deliveries WHERE subscription_id=?').get('existing_sub').resend_id,'existing_delivery');
   assert.equal(f.billing.db.prepare('SELECT token_hash FROM downloads').get().token_hash,'existing_token_hash');
   assert.equal(f.auth.accessSession(tokens.access_token).account_id,tokens.account_id);
-  assert.equal(f.billing.db.prepare('SELECT count(*) n FROM auth_schema_migrations').get().n,2);
+  assert.equal(f.billing.db.prepare('SELECT count(*) n FROM auth_schema_migrations').get().n,3);
  }finally{await f.close()}
 });
 
