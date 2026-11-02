@@ -167,3 +167,7 @@ O login, cookies, JWKS e rotas de licença permanecem na origem da API, não na 
 ## Cadastro pós-compra opcional
 
 Além dos convites administrativos, o onboarding pode emitir convites automáticos após pagamento inicial confirmado. Esses convites ficam em tabelas separadas e exigem uma prova curta de controle do e-mail antes da passkey. Não usar e-mail, retorno de Checkout ou download como credencial. Consulte [onboarding/README.md](../onboarding/README.md) para variáveis, migração, recuperação e rollback. Chaves, issuer, audience e protocolo desktop da licença permanecem os existentes.
+
+## Login opcional por e-mail e código
+
+A modalidade `EMAIL_OTP_AUTH_ENABLED=false` adiciona OTP de seis dígitos sem exigir passkey de novos compradores. Contas antigas exigem adesão autenticada explícita; passkeys e sessões atuais permanecem válidas. Consulte [configuração, política de migração e rollback](../auth/EMAIL-OTP.md) e o contrato Windows indicado no guia. Esta seção complementa o fluxo original acima; não implica habilitação ou deploy.

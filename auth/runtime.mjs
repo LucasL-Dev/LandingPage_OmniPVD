@@ -4,6 +4,7 @@ import { createAuth } from './service.mjs';
 import { createAuthHandler } from './http.mjs';
 import { createLicensing } from '../licensing/service.mjs';
 import { deploymentOrigins } from '../config/origins.mjs';
+import { createEmailOtp } from './email-otp.mjs';
 import { createOnboarding } from '../onboarding/service.mjs';
 import { migrateLicensing } from '../db/migrate.mjs';
 
@@ -42,11 +43,12 @@ export async function authRuntime({stripe,billing,projectRoot,priceId}) {
   if(process.env.AUTOMATIC_ONBOARDING_ENABLED==='true') {
     const keyPath=await realpath(process.env.ONBOARDING_OUTBOX_KEY_PATH);
     if(keyPath===root || keyPath.startsWith(root+path.sep) || keyPath===filename)throw Error('Chave de outbox deve ser privada, fora do checkout e diferente da chave de licença.');
-    onboarding=createOnboarding({db:billing.db,stripe,delivery:billing.onboardingDelivery,config:{origin:configuredOrigin,priceId,from:billing.onboardingDelivery.from,supportEmail:billing.onboardingDelivery.supportEmail},key:await readFile(keyPath)});
+    onboarding=createOnboarding({db:billing.db,stripe,delivery:billing.onboardingDelivery,config:{origin:configuredOrigin,priceId,emailOtp:process.env.EMAIL_OTP_AUTH_ENABLED==='true',from:billing.onboardingDelivery.from,supportEmail:billing.onboardingDelivery.supportEmail},key:await readFile(keyPath)});
     billing.attachOnboarding(onboarding);
   }
   const auth=createAuth({db:billing.db,config,onboarding});
+  const emailOtp=process.env.EMAIL_OTP_AUTH_ENABLED==='true'?createEmailOtp({db:billing.db,auth,onboarding}):null;
   const licensing=await createLicensing({db:billing.db,stripe,privateKeyPem:await readFile(filename,'utf8'),
     config:{priceId,keyId,previousPublicKeys,issuer:originUrl.origin,audience:'omnipvd-desktop',offlineTtlSeconds:seconds('LICENSE_OFFLINE_TTL_SECONDS',14_400,60,14_400),recheckSeconds:seconds('LICENSE_RECHECK_SECONDS',900,30,3600)}});
-  return {auth,licensing,onboarding,handle:createAuthHandler({auth,licensing,onboarding,db:billing.db,config})};
+  return {auth,licensing,onboarding,emailOtp,handle:createAuthHandler({auth,licensing,onboarding,emailOtp,db:billing.db,config})};
 }

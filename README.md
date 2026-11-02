@@ -49,3 +49,7 @@ A branch `feat/production-integration` usa `feat/ubuntu-vps-deployment` como bas
 ## Cadastro automático pós-compra
 
 A branch de onboarding acrescenta convite após pagamento inicial confirmado, código separado para o e-mail congelado da compra e cadastro com passkey. Contas existentes e suporte administrativo são preservados. O recurso é opt-in (`AUTOMATIC_ONBOARDING_ENABLED=false`), usa a mesma fila/worker e requer uma chave exclusiva de criptografia da outbox fora do checkout. Veja [onboarding/README.md](onboarding/README.md) para fluxo, variáveis, migração 002, rollback e testes. Nenhum deploy ou envio real é automático nesta entrega.
+
+## Login opcional por e-mail e código
+
+A modalidade `EMAIL_OTP_AUTH_ENABLED=false` adiciona OTP de seis dígitos sem exigir passkey de novos compradores. Contas antigas exigem adesão autenticada explícita; passkeys e sessões atuais permanecem válidas. Consulte [configuração, política de migração e rollback](auth/EMAIL-OTP.md) e o contrato Windows indicado no guia. Esta seção complementa o fluxo original acima; não implica habilitação ou deploy.

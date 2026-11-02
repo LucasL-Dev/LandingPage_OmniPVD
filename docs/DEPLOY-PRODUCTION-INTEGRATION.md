@@ -233,3 +233,7 @@ Para referências de backup criptografado, recuperação, rotação e instalaç�
 ## Onboarding automático opcional
 
 A automação pós-compra está documentada em [onboarding/README.md](../onboarding/README.md). Adiciona `AUTOMATIC_ONBOARDING_ENABLED` (padrão false) e `ONBOARDING_OUTBOX_KEY_PATH` (32 bytes privados fora do checkout, chave distinta da licença). Não alterar credenciais Stripe/Resend nem regenerar Ed25519. Antes de habilitar manualmente, fazer backup, revisar a migração 002 e a fila existente; não há reenfileiramento em massa de mensagens antigas. No rollback, desligar envios/automação e manter banco e chave de outbox, sem restaurar snapshot antigo. Nenhuma dessas etapas foi executada na VPS.
+
+## Login opcional por e-mail e código
+
+A modalidade `EMAIL_OTP_AUTH_ENABLED=false` adiciona OTP de seis dígitos sem exigir passkey de novos compradores. Contas antigas exigem adesão autenticada explícita; passkeys e sessões atuais permanecem válidas. Consulte [configuração, política de migração e rollback](../auth/EMAIL-OTP.md) e o contrato Windows indicado no guia. Esta seção complementa o fluxo original acima; não implica habilitação ou deploy.

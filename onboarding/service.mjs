@@ -38,6 +38,24 @@ export function createOnboarding({db,stripe,delivery,config,key,now=()=>Date.now
     const sub=await stripe.subscriptions.retrieve(row.subscription_id);
     check(invoice?.livemode===false && sub?.livemode===false && invoice.status==='paid' && invoice.paid!==false && invoice.billing_reason==='subscription_create' && id(invoice.customer)===row.customer_id && sid(invoice)===row.subscription_id && id(sub.customer)===row.customer_id && sub.items?.data?.some(item=>item.price?.id===config.priceId) && emailValid(invoice.customer_email) && emailKey(invoice.customer_email)===row.email_key,400,'invalid_invite');
   }
+  // Explicit legacy enrollment may import only an already-linked paid purchase.
+  // No anonymous Stripe search, mutable customer contact or bulk historical backfill.
+  async function rememberLinkedPurchase(accountId,lookup) {
+    const jobs=db.prepare(`SELECT d.* FROM deliveries d JOIN auth_stripe_links l
+      ON l.customer_id=d.customer_id AND l.stripe_mode='test' WHERE l.account_id=? LIMIT 101`).all(accountId);
+    check(jobs.length<=100,503,'onboarding_unavailable');
+    for(const job of jobs) {
+      if(purchase(job.customer_id))continue;
+      const invoice=await stripe.invoices.retrieve(job.invoice_id);
+      if(!emailValid(invoice?.customer_email) || emailKey(invoice.customer_email)!==lookup)continue;
+      const row={customer_id:job.customer_id,subscription_id:job.subscription_id,invoice_id:job.invoice_id,email_key:lookup};
+      await validatePurchase(row);
+      transaction(db,()=>{
+        check(linked(job.customer_id)?.account_id===accountId,400,'invalid_verification');
+        db.prepare('INSERT OR IGNORE INTO onboarding_purchases VALUES(?,?,?,?,?,?)').run(row.customer_id,row.subscription_id,row.invoice_id,lookup,seal(invoice.customer_email.trim(),'recipient:'+row.customer_id),now());
+      });
+    }
+  }
   function invite(row) {
     check(!linked(row.customer_id),409,'customer_already_linked');
     const existing=db.prepare('SELECT * FROM onboarding_invites WHERE customer_id=? AND active=1').get(row.customer_id);
@@ -52,12 +70,18 @@ export function createOnboarding({db,stripe,delivery,config,key,now=()=>Date.now
   async function welcome(job,state,invoice) {
     check(invoice.livemode===false && state.sub.livemode===false && emailValid(invoice.customer_email),400,'buyer_email_unavailable');
     const address=invoice.customer_email.trim();
-    if(linked(job.customer_id))return {to:address,activationUrl:new URL('/account/login',origin).href,activationMode:'login'};
+    if(linked(job.customer_id) && !config.emailOtp)return {to:address,activationUrl:new URL('/account/login',origin).href,activationMode:'login'};
     return transaction(db,()=>{
       const existing=purchase(job.customer_id);
       if(existing)check(existing.email_key===emailKey(address),409,'buyer_email_changed');
       else db.prepare('INSERT INTO onboarding_purchases VALUES(?,?,?,?,?,?)').run(job.customer_id,job.subscription_id,job.invoice_id,emailKey(address),seal(address,'recipient:'+job.customer_id),now());
-      const row=purchase(job.customer_id),token=invite(row);
+      const row=purchase(job.customer_id);
+      if(config.emailOtp) {
+        const owner=linked(job.customer_id);
+        const optedIn=owner && db.prepare('SELECT 1 FROM auth_email_identities WHERE account_id=? AND customer_id=?').get(owner.account_id,job.customer_id);
+        return {to:recipient(row),activationUrl:new URL('/account/login',origin).href,activationMode:owner&&!optedIn?'login':'email-otp'};
+      }
+      const token=invite(row);
       return {to:recipient(row),activationUrl:inviteUrl(token),activationMode:'register'};
     });
   }
@@ -145,16 +169,20 @@ export function createOnboarding({db,stripe,delivery,config,key,now=()=>Date.now
     db.prepare('UPDATE onboarding_proofs SET used_at=? WHERE token_hash=?').run(now(),hash(emailProof));
   }
   async function runQueue(shouldStop=()=>false) {
-    const jobs=db.prepare("SELECT * FROM onboarding_outbox WHERE status IN ('pending','retry','sending') AND next_at<=? AND lease_until<=? LIMIT 20").all(now(),now());
+    const jobs=db.prepare("SELECT * FROM onboarding_outbox WHERE status IN ('pending','retry','sending') AND next_at<=? AND lease_until<=? AND (purpose<>'login' OR ?=1) LIMIT 20").all(now(),now(),config.emailOtp?1:0);
     for(const job of jobs) {
       if(shouldStop())break;
+      if(job.purpose==='login' && !config.emailOtp)continue;
       if(job.expires_at<=now()){db.prepare("UPDATE onboarding_outbox SET status='expired' WHERE id=?").run(job.id);continue;}
       if(job.attempts>=8 || job.first_at && now()-job.first_at>=23*3600_000){db.prepare("UPDATE onboarding_outbox SET status='manual_review' WHERE id=?").run(job.id);continue;}
       if(!db.prepare("UPDATE onboarding_outbox SET lease_until=?,status='sending' WHERE id=? AND lease_until<=? AND status IN ('pending','retry','sending')").run(now()+5*60_000,job.id,now()).changes)continue;
       try {
         const row=purchase(job.customer_id);await validatePurchase(row);
-        if(linked(row.customer_id)){db.prepare("UPDATE onboarding_outbox SET status='obsolete',lease_until=0 WHERE id=?").run(job.id);continue;}
-        if(job.purpose==='code') {
+        if(job.purpose!=='login' && linked(row.customer_id)){db.prepare("UPDATE onboarding_outbox SET status='obsolete',lease_until=0 WHERE id=?").run(job.id);continue;}
+        if(job.purpose==='login') {
+          const v=db.prepare('SELECT used_at,expires_at FROM auth_email_challenges WHERE id=?').get(job.subject_hash);
+          if(!v || v.used_at || v.expires_at<=now()){db.prepare("UPDATE onboarding_outbox SET status='obsolete',lease_until=0 WHERE id=?").run(job.id);continue;}
+        } else if(job.purpose==='code') {
           const v=db.prepare('SELECT used_at,expires_at FROM onboarding_verifications WHERE token_hash=?').get(job.subject_hash);
           if(!v || v.used_at || v.expires_at<=now()){db.prepare("UPDATE onboarding_outbox SET status='obsolete',lease_until=0 WHERE id=?").run(job.id);continue;}
         } else {
@@ -169,5 +197,5 @@ export function createOnboarding({db,stripe,delivery,config,key,now=()=>Date.now
       }catch{db.prepare("UPDATE onboarding_outbox SET status='retry',last_error='send_not_confirmed',next_at=?,lease_until=0 WHERE id=?").run(now()+Math.min(3600,30*2**job.attempts)*1000,job.id);}
     }
   }
-  return {welcome,start,verify,recoveryStart,recoveryVerify,claim,consumeClaim,runQueue,sealWelcome:(payload,sid)=>seal(payload,'welcome:'+sid),openWelcome:(payload,sid)=>open(payload,'welcome:'+sid)};
+  return {otpSupport:{rememberLinkedPurchase,emailKey,digest,purchase,recipient,validatePurchase,available,queueMail,mail},welcome,start,verify,recoveryStart,recoveryVerify,claim,consumeClaim,runQueue,sealWelcome:(payload,sid)=>seal(payload,'welcome:'+sid),openWelcome:(payload,sid)=>open(payload,'welcome:'+sid)};
 }

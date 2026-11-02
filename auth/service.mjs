@@ -189,5 +189,5 @@ export function createAuth({ db, config, now = () => Date.now(), webauthn = WebA
   function sessions(session) {
     return db.prepare('SELECT id,kind,device_name,created_at,expires_at,revoked_at FROM auth_sessions WHERE account_id=? ORDER BY created_at DESC').all(session.account_id);
   }
-  return {issueClaim,linkClaim,registrationOptions,registrationVerify,loginOptions,loginVerify,browserSession,accessSession,csrf,verifyCsrf,requireRecent,authorize,exchange,revoke,sessions};
+  return {createEmailSession:account=>newSession(account,'browser'),issueClaim,linkClaim,registrationOptions,registrationVerify,loginOptions,loginVerify,browserSession,accessSession,csrf,verifyCsrf,requireRecent,authorize,exchange,revoke,sessions};
 }

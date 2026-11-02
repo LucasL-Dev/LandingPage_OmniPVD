@@ -23,9 +23,10 @@ export async function buildWelcomeEmail(data) {
   if(data.activationUrl) {
     const activation=new URL(data.activationUrl);
     if(activation.protocol!=='https:' || activation.username || activation.password)throw Error('activationUrl deve ser HTTPS.');
-    const existing=data.activationMode==='login';
+    const otp=data.activationMode==='email-otp';
+    const existing=data.activationMode==='login'||otp;
     const heading=existing?'Acesse sua conta OmniPDV':'Ative sua conta com segurança';
-    const instructions=existing?'Entre com sua passkey existente e autorize o aplicativo Windows. Sua conta não será duplicada.':'Abra o convite pessoal, solicite o código enviado ao e-mail da compra, confirme o código e cadastre sua passkey. Depois, entre no aplicativo pelo navegador para validar sua licença.';
+    const instructions=otp?'Após instalar, abra o acesso pelo navegador, informe o e-mail usado na compra e confirme o código de 6 dígitos enviado ao seu e-mail. Não é necessário criar senha ou passkey. Autorize somente o aplicativo Windows que você iniciou.':existing?'Entre com sua passkey existente e autorize o aplicativo Windows. Sua conta não será duplicada.':'Abra o convite pessoal, solicite o código enviado ao e-mail da compra, confirme o código e cadastre sua passkey. Depois, entre no aplicativo pelo navegador para validar sua licença.';
     activationSection=`<h2 style="margin:0 0 12px;font-size:21px;line-height:28px;color:#173F35;">${heading}</h2><p style="margin:0 0 18px;font-size:14px;line-height:23px;color:#53655E;">${instructions}</p><p style="margin:0 0 18px;"><a href="${escapeHtml(data.activationUrl)}" style="display:inline-block;background:#285D53;color:#FFFFFF;text-decoration:none;font-weight:bold;padding:14px 20px;border-radius:7px;">${existing?'Acessar minha conta':'Ativar minha conta'}</a></p><p style="margin:0 0 28px;font-size:12px;line-height:20px;color:#65776D;">${existing?'Não compartilhe suas credenciais.':'O convite expira em 48 horas, é pessoal e de uso único. Nunca compartilhe o código de e-mail. Se expirar, use a recuperação na página de ativação.'}</p>`;
     activationText=`\n\n${heading}\n${instructions}\n${data.activationUrl}\n${existing?'':'Convite pessoal de uso único, válido por 48 horas. Se expirar, solicite recuperação na página de ativação.'}`;
   }
